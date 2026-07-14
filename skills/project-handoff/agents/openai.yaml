@@ -1,0 +1,6 @@
+interface:
+  display_name: "Project Handoff"
+  short_description: "Save or restore one durable project handoff"
+  default_prompt: "Use $project-handoff to save or restore the project handoff."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Summer Harness"
+  short_description: "Opt-in durable workflow and context restore"
+  default_prompt: "Use $summer-harness to run this task with a lightweight persistent workflow."
+policy:
+  allow_implicit_invocation: false

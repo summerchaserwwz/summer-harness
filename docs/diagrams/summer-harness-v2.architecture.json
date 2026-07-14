@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Summer Harness v2",
+    "subtitle": "Headless deep kernel with an on-demand product shell",
+    "output": "summer-harness-v2.html"
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "explicit activation", "pos": [40, 300], "size": [120, 60] },
+    { "id": "hosts", "type": "external", "label": "Agent Hosts", "sublabel": "Codex / Claude / GSD", "pos": [40, 470], "size": [140, 60] },
+    { "id": "cli", "type": "frontend", "label": "summer CLI", "sublabel": "fast, short-lived", "pos": [250, 220], "size": [135, 60] },
+    { "id": "gui", "type": "frontend", "label": "On-demand GUI", "sublabel": "React + local Web", "pos": [250, 380], "size": [145, 60] },
+    { "id": "adapters", "type": "messagebus", "label": "Runtime Adapters", "sublabel": "MCP / Worker / GSD", "pos": [250, 540], "size": [145, 60] },
+    { "id": "engine", "type": "backend", "label": "Deep Engine", "sublabel": "Apply / Query / Execute", "pos": [500, 360], "size": [160, 70], "tag": "single semantics" },
+    { "id": "evidence", "type": "security", "label": "Evidence Capture", "sublabel": "argv / exit / digest", "pos": [500, 150], "size": [160, 64] },
+    { "id": "collab", "type": "backend", "label": "Collaboration", "sublabel": "Assignment / Proposal", "pos": [500, 540], "size": [160, 64] },
+    { "id": "ledger", "type": "database", "label": "Canonical Ledger", "sublabel": "transaction chain + Git", "pos": [760, 360], "size": [165, 70], "tag": "source of truth" },
+    { "id": "objects", "type": "database", "label": "Evidence Objects", "sublabel": "content addressed", "pos": [760, 150], "size": [155, 64] },
+    { "id": "projection", "type": "database", "label": "Projection", "sublabel": "snapshot / SQLite / graph", "pos": [1010, 270], "size": [170, 70], "tag": "rebuildable" },
+    { "id": "handoff", "type": "cloud", "label": "HANDOFF.md", "sublabel": "4 KiB recovery entry", "pos": [1010, 450], "size": [170, 64] },
+    { "id": "evolution", "type": "security", "label": "Evolution Inbox", "sublabel": "candidate + approval", "pos": [1010, 590], "size": [170, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Loaded only by explicit summer commands", "wraps": ["cli", "gui", "adapters", "engine", "evidence", "collab", "ledger", "objects", "projection", "handoff", "evolution"] },
+    { "kind": "security-group", "label": "Only Engine may commit canonical state", "wraps": ["engine", "ledger"] }
+  ],
+  "connections": [
+    { "from": "user", "to": "cli", "label": "commands", "variant": "emphasis" },
+    { "from": "user", "to": "gui", "label": "summer ui", "variant": "emphasis" },
+    { "from": "hosts", "to": "adapters", "label": "work / resume", "variant": "dashed" },
+    { "from": "cli", "to": "engine", "variant": "emphasis" },
+    { "from": "gui", "to": "engine", "variant": "emphasis" },
+    { "from": "adapters", "to": "engine", "variant": "emphasis" },
+    { "from": "engine", "to": "evidence", "label": "execute", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "from": "engine", "to": "collab", "label": "assign / ingest", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "from": "evidence", "to": "objects", "label": "digest + receipt", "variant": "security" },
+    { "from": "engine", "to": "ledger", "label": "atomic commit", "variant": "emphasis" },
+    { "from": "ledger", "to": "projection", "label": "project", "variant": "dashed" },
+    { "from": "ledger", "to": "handoff", "label": "bounded view", "variant": "dashed" },
+    { "from": "ledger", "to": "evolution", "label": "patterns", "variant": "security", "fromSide": "right", "toSide": "left" },
+    { "from": "projection", "to": "gui", "label": "read views", "variant": "dashed", "fromSide": "left", "toSide": "right" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Fast by default", "items": ["Direct work never loads Harness", "CLI reads Handoff or snapshot without GUI", "SQLite and graph load only for summer ui"] },
+    { "dot": "emerald", "title": "One truth", "items": ["Engine is the only write seam", "Ledger is canonical", "GUI, Handoff and SQLite are projections"] },
+    { "dot": "rose", "title": "Controlled power", "items": ["Machine-captured Evidence", "Worker Proposal + Coordinator ingest", "Evolution requires human approval"] }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "created_at": "2026-07-14T15:43:24.095270Z",
+  "gsd_source": ".planning",
+  "handoff": ".agent/HANDOFF.md",
+  "native_ledger": ".agent/ledger",
+  "schema": "summer-harness/v1"
+}
