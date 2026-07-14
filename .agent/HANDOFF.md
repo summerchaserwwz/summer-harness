@@ -20,15 +20,15 @@
     "docs/roadmap.md"
   ],
   "next": [
-    "等待用户确认三入口 Engine seam 与推荐技术选择，然后按 TDD 开始 Go Kernel vertical slice。"
+    "确认核心 seam 后开始 Go TDD。"
   ],
   "resume_command": "$project-handoff",
   "schema": "summer-harness/v1",
-  "source_digest": "d6c406a89f1a01eefb8ee00bb26d0fdce871ef9f899b3c39c414a0d83794d666",
+  "source_digest": "7591992980791c9f429341b8a5b84493a9f44246a94c2f3466aea14012b64f4d",
   "source_path": ".agent/ledger/tasks/task_20260714T154324166611Z_8f7b2c.md",
   "task_id": "task_20260714T154324166611Z_8f7b2c",
   "task_status": "active",
-  "updated_at": "2026-07-14T16:04:28.256005Z",
+  "updated_at": "2026-07-14T16:11:27.576835Z",
   "validation": [
     "harnessctl doctor 返回 ok=true 且无 warnings。",
     "20 项 Python v1 回归测试通过。",
@@ -53,7 +53,7 @@
 
 ## 唯一下一步
 
-- 等待用户确认三入口 Engine seam 与推荐技术选择，然后按 TDD 开始 Go Kernel vertical slice。
+- 确认核心 seam 后开始 Go TDD。
 
 ## 验证
 
