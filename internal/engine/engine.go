@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/summerchaserwwz/summer-harness/internal/continuity"
 	"github.com/summerchaserwwz/summer-harness/internal/ledger"
 )
 
@@ -104,17 +105,33 @@ type Rejection struct {
 }
 
 type Receipt struct {
-	Accepted        bool       `json:"accepted"`
-	TransactionID   string     `json:"transaction_id,omitempty"`
-	NewRevision     uint64     `json:"new_revision,omitempty"`
-	EntityID        string     `json:"entity_id,omitempty"`
-	EmittedEventIDs []string   `json:"emitted_event_ids"`
-	Rejection       *Rejection `json:"rejection,omitempty"`
+	Accepted        bool               `json:"accepted"`
+	TransactionID   string             `json:"transaction_id,omitempty"`
+	NewRevision     uint64             `json:"new_revision,omitempty"`
+	EntityID        string             `json:"entity_id,omitempty"`
+	EmittedEventIDs []string           `json:"emitted_event_ids"`
+	Rejection       *Rejection         `json:"rejection,omitempty"`
+	Projection      *ProjectionReceipt `json:"projection,omitempty"`
+}
+
+type ProjectionStatus string
+
+const (
+	ProjectionCurrent        ProjectionStatus = "current"
+	ProjectionRepairRequired ProjectionStatus = "repair_required"
+)
+
+type ProjectionReceipt struct {
+	Status ProjectionStatus `json:"status"`
+	Code   string           `json:"code,omitempty"`
 }
 
 type QueryKind string
 
-const QueryObjective QueryKind = "Objective"
+const (
+	QueryObjective QueryKind = "Objective"
+	QueryResume    QueryKind = "Resume"
+)
 
 type Query struct {
 	Kind      QueryKind `json:"kind"`
@@ -134,17 +151,35 @@ type ObjectiveView struct {
 func (ObjectiveView) QueryKind() QueryKind { return QueryObjective }
 func (ObjectiveView) isView()              {}
 
+type ResumeView struct {
+	Capsule continuity.Capsule `json:"capsule"`
+}
+
+func (ResumeView) QueryKind() QueryKind { return QueryResume }
+func (ResumeView) isView()              {}
+
 type Engine interface {
 	Apply(ctx context.Context, command CommandEnvelope) (Receipt, error)
 	Query(ctx context.Context, query Query) (View, error)
 }
 
 type kernel struct {
-	store ledger.Store
+	store      ledger.Store
+	continuity *continuity.Module
 }
 
-func New(store ledger.Store) Engine {
-	return &kernel{store: store}
+type Option func(*kernel)
+
+func WithContinuity(module *continuity.Module) Option {
+	return func(kernel *kernel) { kernel.continuity = module }
+}
+
+func New(store ledger.Store, options ...Option) Engine {
+	kernel := &kernel{store: store}
+	for _, option := range options {
+		option(kernel)
+	}
+	return kernel
 }
 
 func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, error) {
@@ -168,6 +203,11 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 		return Receipt{}, err
 	} else if found {
 		return receipt, nil
+	}
+	if command.Kind == CommandStartObjective && k.continuity != nil {
+		if err := k.continuity.PreflightLifecycle(ctx, command.ProjectID); err != nil {
+			return projectionPreflightRejection(err), nil
+		}
 	}
 	if command.Kind != CommandStartObjective {
 		return Receipt{Accepted: false, Rejection: &Rejection{
@@ -251,6 +291,18 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 		Status:      ObjectiveActive,
 		Revision:    1,
 	}
+	if k.continuity != nil {
+		preflightState := continuity.State{
+			ProjectID: command.ProjectID, ObjectiveID: objective.ObjectiveID,
+			ObjectiveStatus: string(objective.Status), ObjectiveRevision: objective.Revision,
+			Goal: objective.Goal, Profile: objective.Profile, Acceptance: objective.Acceptance,
+			BuiltAt: time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.UTC), ResumeCommand: "summer resume",
+		}
+		preflightCursor := continuity.Cursor{Revision: command.ExpectedRevision + 1, Digest: strings.Repeat("0", sha256.Size*2)}
+		if err := k.continuity.PreflightStart(ctx, preflightState, preflightCursor); err != nil {
+			return projectionPreflightRejection(err), nil
+		}
+	}
 	data, err := json.Marshal(objective)
 	if err != nil {
 		return Receipt{}, fmt.Errorf("encode objective: %w", err)
@@ -304,16 +356,15 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 	if err != nil {
 		return Receipt{}, err
 	}
-	if transaction.TransactionID != transactionID {
-		return receiptFromTransaction(transaction), nil
+	return k.receiptWithProjection(ctx, transaction), nil
+}
+
+func projectionPreflightRejection(err error) Receipt {
+	code := continuity.ErrorCode(err)
+	if code == "" {
+		code = continuity.CodeProjectionConflict
 	}
-	return Receipt{
-		Accepted:        true,
-		TransactionID:   transaction.TransactionID,
-		NewRevision:     transaction.Revision,
-		EntityID:        objectiveID,
-		EmittedEventIDs: []string{eventID},
-	}, nil
+	return Receipt{Accepted: false, Rejection: &Rejection{Code: string(code), Message: err.Error()}}
 }
 
 func (k *kernel) findIdempotentReceipt(ctx context.Context, command CommandEnvelope, digest string) (Receipt, bool, error) {
@@ -327,7 +378,52 @@ func (k *kernel) findIdempotentReceipt(ctx context.Context, command CommandEnvel
 			Message: "idempotency key was already used for a different command",
 		}}, true, nil
 	}
-	return receiptFromTransaction(transaction), true, nil
+	return k.receiptWithProjection(ctx, transaction), true, nil
+}
+
+func (k *kernel) receiptWithProjection(ctx context.Context, transaction ledger.Transaction) Receipt {
+	receipt := receiptFromTransaction(transaction)
+	if k.continuity == nil {
+		return receipt
+	}
+	var objective Objective
+	found := false
+	for _, event := range transaction.Events {
+		if event.Kind != "ObjectiveStarted" {
+			continue
+		}
+		if err := json.Unmarshal(event.Data, &objective); err != nil {
+			receipt.Projection = &ProjectionReceipt{Status: ProjectionRepairRequired, Code: "HANDOFF_INVALID"}
+			return receipt
+		}
+		found = true
+		break
+	}
+	if !found {
+		return receipt
+	}
+	cursor := continuity.Cursor{Revision: transaction.Revision, Digest: transaction.Digest}
+	state := continuity.State{
+		ProjectID: transaction.ProjectID, ObjectiveID: objective.ObjectiveID,
+		ObjectiveStatus: string(objective.Status), ObjectiveRevision: objective.Revision,
+		Goal: objective.Goal, Profile: objective.Profile, Acceptance: objective.Acceptance,
+		BuiltAt: transaction.CommittedAt, ResumeCommand: "summer resume",
+	}
+	if _, err := k.continuity.Project(ctx, state, cursor); err != nil {
+		code := continuity.ErrorCode(err)
+		if code == "" {
+			code = continuity.CodeProjectionConflict
+		}
+		receipt.Projection = &ProjectionReceipt{Status: ProjectionRepairRequired, Code: string(code)}
+		return receipt
+	}
+	head, err := k.store.Head(ctx, transaction.ProjectID)
+	if err != nil || head.Revision != cursor.Revision || head.Digest != cursor.Digest {
+		receipt.Projection = &ProjectionReceipt{Status: ProjectionRepairRequired, Code: string(continuity.CodeProjectionStale)}
+		return receipt
+	}
+	receipt.Projection = &ProjectionReceipt{Status: ProjectionCurrent}
+	return receipt
 }
 
 func receiptFromTransaction(transaction ledger.Transaction) Receipt {
@@ -346,6 +442,16 @@ func receiptFromTransaction(transaction ledger.Transaction) Receipt {
 }
 
 func (k *kernel) Query(ctx context.Context, query Query) (View, error) {
+	if query.Kind == QueryResume {
+		if k.continuity == nil {
+			return nil, &continuity.Error{Code: continuity.CodeCapabilityUnavailable, Op: "query resume", Err: errors.New("continuity module is not configured")}
+		}
+		capsule, err := k.continuity.Resume(ctx, continuitySource{store: k.store})
+		if err != nil {
+			return nil, err
+		}
+		return ResumeView{Capsule: capsule}, nil
+	}
 	if query.Kind != QueryObjective {
 		return nil, fmt.Errorf("unsupported query kind %q", query.Kind)
 	}
@@ -366,6 +472,54 @@ func (k *kernel) Query(ctx context.Context, query Query) (View, error) {
 		}
 	}
 	return nil, fmt.Errorf("objective %q not found", query.EntityID)
+}
+
+type continuitySource struct {
+	store ledger.Store
+}
+
+func (source continuitySource) Project(ctx context.Context) (string, bool, error) {
+	return source.store.Project(ctx)
+}
+
+func (source continuitySource) Snapshot(ctx context.Context, projectID string) (continuity.State, continuity.Cursor, error) {
+	transactions, err := source.store.Transactions(ctx, projectID)
+	if err != nil {
+		return continuity.State{}, continuity.Cursor{}, err
+	}
+	if len(transactions) == 0 {
+		return continuity.State{}, continuity.Cursor{}, errors.New("canonical ledger has no objective")
+	}
+	var objective Objective
+	found := false
+	for _, transaction := range transactions {
+		for _, event := range transaction.Events {
+			if event.Kind != "ObjectiveStarted" {
+				continue
+			}
+			if found {
+				return continuity.State{}, continuity.Cursor{}, errors.New("canonical ledger has multiple root objectives")
+			}
+			if err := json.Unmarshal(event.Data, &objective); err != nil {
+				return continuity.State{}, continuity.Cursor{}, fmt.Errorf("decode ObjectiveStarted event: %w", err)
+			}
+			found = true
+		}
+	}
+	if !found {
+		return continuity.State{}, continuity.Cursor{}, errors.New("canonical ledger has no root objective")
+	}
+	last := transactions[len(transactions)-1]
+	return continuity.State{
+		ProjectID: projectID, ObjectiveID: objective.ObjectiveID, ObjectiveStatus: string(objective.Status),
+		ObjectiveRevision: objective.Revision, Goal: objective.Goal, Profile: objective.Profile, Acceptance: objective.Acceptance,
+		ResumeCommand: "summer resume", BuiltAt: last.CommittedAt,
+	}, continuity.Cursor{Revision: last.Revision, Digest: last.Digest}, nil
+}
+
+func (source continuitySource) Head(ctx context.Context, projectID string) (continuity.Cursor, error) {
+	head, err := source.store.Head(ctx, projectID)
+	return continuity.Cursor{Revision: head.Revision, Digest: head.Digest}, err
 }
 
 func validateEnvelope(command CommandEnvelope) *Rejection {
@@ -490,6 +644,9 @@ func validateBoundedText(value, label string, maxChars int) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return fmt.Errorf("%s is required", label)
+	}
+	if strings.ContainsAny(value, "\r\n") {
+		return fmt.Errorf("%s must be a single line", label)
 	}
 	if utf8.RuneCountInString(value) > maxChars {
 		return fmt.Errorf("%s exceeds %d characters", label, maxChars)

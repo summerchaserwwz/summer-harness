@@ -61,6 +61,7 @@ type Head struct {
 }
 
 type Store interface {
+	Project(ctx context.Context) (projectID string, found bool, err error)
 	Head(ctx context.Context, projectID string) (Head, error)
 	FindByIdempotency(ctx context.Context, projectID, idempotencyKey string) (Transaction, bool, error)
 	Commit(ctx context.Context, draft Draft, expectedRevision uint64) (Transaction, error)

@@ -268,6 +268,34 @@ func rejectSymlinkDirectory(path string) error {
 	return nil
 }
 
+func (f *File) Project(ctx context.Context) (_ string, _ bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	unlock, err := f.acquireLedgerLock(ctx, false)
+	if err != nil {
+		return "", false, err
+	}
+	defer finishUnlock(unlock, &err)
+	head, err := f.readHead()
+	if err != nil {
+		return "", false, err
+	}
+	if !isZeroHead(head) {
+		if err := validateFileHead(head); err != nil {
+			return "", false, err
+		}
+		return head.ProjectID, true, nil
+	}
+	pending, found, err := f.readPendingCommit()
+	if err != nil {
+		return "", false, err
+	}
+	if found {
+		return pending.ProjectID, true, nil
+	}
+	return "", false, nil
+}
+
 func (f *File) Head(ctx context.Context, projectID string) (_ Head, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -276,12 +304,18 @@ func (f *File) Head(ctx context.Context, projectID string) (_ Head, err error) {
 		return Head{}, err
 	}
 	defer finishUnlock(unlock, &err)
-	transactions, head, err := f.readAll(ctx, projectID)
+	head, err := f.readHead()
 	if err != nil {
 		return Head{}, err
 	}
-	if len(transactions) == 0 {
+	if isZeroHead(head) {
 		return Head{}, nil
+	}
+	if err := validateFileHead(head); err != nil {
+		return Head{}, err
+	}
+	if head.ProjectID != projectID {
+		return Head{}, fmt.Errorf("%w: HEAD belongs to project %q, requested %q", ErrProjectConflict, head.ProjectID, projectID)
 	}
 	return Head{Revision: head.Revision, Digest: head.Digest}, nil
 }
@@ -632,6 +666,14 @@ func (pending pendingCommit) matches(transaction Transaction) bool {
 
 func isZeroHead(head fileHead) bool {
 	return head.Schema == "" && head.ProjectID == "" && head.TransactionID == "" && head.Revision == 0 && head.Digest == ""
+}
+
+func validateFileHead(head fileHead) error {
+	if head.Schema != ledgerHeadSchema || strings.TrimSpace(head.ProjectID) == "" ||
+		!ledgerIDPattern.MatchString(head.TransactionID) || head.Revision == 0 || strings.TrimSpace(head.Digest) == "" {
+		return errors.New("HEAD is incomplete")
+	}
+	return nil
 }
 
 func (f *File) readHead() (fileHead, error) {

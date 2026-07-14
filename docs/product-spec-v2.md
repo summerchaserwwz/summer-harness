@@ -129,6 +129,7 @@ applied   -> verified | rolled_back
 
 ## 状态与隐私
 
+- “记忆完整”指可行动语义完整：目标、Decision、Fact、Evidence、已完成、下一步、阻塞与风险可恢复；不等于默认保存完整聊天、思维链或源码副本。
 - Handoff、Root Objective、WorkItem、Decision、Fact、Execution manifest、Review 和 Evolution Candidate 可以进入 Git。
 - stdout/stderr、截图和大型 Artifact 默认进入内容寻址 Evidence Store，并受 `.gitignore`、大小限制和 secret redaction 控制。
 - Canonical record 保存 digest、大小、摘要和 retention policy；大文件可以使用外部 CI artifact URL + digest。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the global Summer Harness installation without modifying it."""
+"""Maintainer-only audit of Summer's author workstation integration."""
 
 from __future__ import annotations
 

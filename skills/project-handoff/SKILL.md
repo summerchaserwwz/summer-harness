@@ -11,12 +11,12 @@ Use one small repository-local file to cross session boundaries. This skill does
 
 1. Find the project root and read applicable `AGENTS.md` plus `git status`.
 2. If `.agent/HANDOFF.md` exists, read it before other workflow state.
-3. Resolve the installed `summer-harness` skill directory and run its `scripts/harnessctl.py resume --repo <root>`.
+3. Prefer `summer --repo <root> resume`. If the development binary is unavailable, resolve the installed `summer-harness` skill directory and run `python3 <summer-skill>/scripts/harnessctl.py --repo <root> resume`.
 4. Read only the returned `must_read` files and the canonical `source_path`.
 5. If mode is `gsd`, continue through the named `$gsd-*` command; `.planning/` remains canonical.
 6. If mode is `native`, use the active Summer task. If mode is `direct`, continue directly. If mode is `idle`, report that no work is active.
 
-Fail closed when `resume` reports a digest mismatch. Run `doctor`; do not invent state from the chat transcript.
+Fail closed when `resume` reports a digest mismatch or lifecycle conflict. Run `summer --repo <root> doctor`; do not invent state from the chat transcript. A missing native v2 Handoff may be rebuilt from its Canonical Ledger, but drift is never silently repaired.
 
 ## Save Direct Work
 
@@ -39,4 +39,4 @@ Keep it below 4 KiB. Record at most five `must_read` paths. Do not copy conversa
 - Native Summer task: use `checkpoint`; it derives Handoff from the canonical Task.
 - GSD task: use `handoff --mode gsd --active-artifact .planning/STATE.md`; never mirror phase state into `.agent/ledger/`.
 
-Always run `doctor` after saving. The task is safely handed off only when `doctor` succeeds or reports only an understood non-blocking warning.
+Always run `summer --repo <root> doctor` after saving when the Go CLI is installed; otherwise run the Python shim's `doctor`. The task is safely handed off only when the check succeeds or reports only an understood non-blocking warning.

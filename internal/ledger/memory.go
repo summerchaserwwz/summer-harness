@@ -17,6 +17,18 @@ func NewMemory() *Memory {
 	return &Memory{}
 }
 
+func (m *Memory) Project(ctx context.Context) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	return m.projectID, m.projectID != "", nil
+}
+
 func (m *Memory) Head(ctx context.Context, projectID string) (Head, error) {
 	if err := ctx.Err(); err != nil {
 		return Head{}, err

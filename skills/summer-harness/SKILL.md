@@ -5,7 +5,7 @@ description: Explicitly activated lightweight project workflow with durable Task
 
 # Summer Harness
 
-Summer Harness is opt-in governance. Ordinary work stays Direct. Once invoked, use its CLI as the single writer for `.agent/` state and keep the product repository as the source of truth.
+Summer Harness is opt-in governance. Ordinary work stays Direct. Once invoked, keep exactly one lifecycle owner and one `.agent/HANDOFF.md`. Preserve semantic project memory, not transcripts.
 
 ## Route Once
 
@@ -19,7 +19,14 @@ When `gsd` is chosen, `.planning/` is canonical. Initialize `.agent/` only to wr
 
 ## Start Native Work
 
-Resolve the script path relative to this `SKILL.md`, then run:
+The Go CLI currently owns bounded restore and diagnosis:
+
+```bash
+summer --repo <root> resume
+summer --repo <root> doctor
+```
+
+Until native write commands land, resolve the Python shim relative to this `SKILL.md` and use it as the only writer:
 
 ```bash
 python3 <skill-dir>/scripts/harnessctl.py init
@@ -86,7 +93,7 @@ For a native Summer task, checkpoint at every session boundary, phase transition
 
 ```bash
 python3 <skill-dir>/scripts/harnessctl.py checkpoint --done "..." --next "..." --validation "..."
-python3 <skill-dir>/scripts/harnessctl.py doctor
+summer --repo <root> doctor
 ```
 
 If the 4 KiB Handoff is approaching its limit, replace old completion bullets with one bounded summary. Detailed history remains in Fact, Decision, and Git:
@@ -100,9 +107,9 @@ python3 <skill-dir>/scripts/harnessctl.py checkpoint \
 
 For a GSD task, do not call `checkpoint`. Let GSD update `.planning/`, then refresh the pointer with `handoff --mode gsd ...` and run `doctor`. For Direct work, use `$project-handoff`.
 
-On a new session, read only `.agent/HANDOFF.md`, run `resume`, then open no more than the listed `must_read` files. Do not scan the entire ledger or transcript unless the capsule is inconsistent.
+On a new session, read applicable `AGENTS.md` and `git status`, then run `summer --repo <root> resume`. Open no more than the returned `must_read` files. Do not scan the transcript or full ledger unless diagnosis requires it.
 
-If a native Handoff projection is damaged but the canonical Task is intact, run `repair-handoff`; it rebuilds the projection without advancing the Task revision. For GSD, refresh `handoff --mode gsd` after `.planning/STATE.md` changes.
+For legacy v1 native state, `repair-handoff` rebuilds the projection without advancing the Task revision. Native v2 automatically rebuilds only a missing Handoff from the Canonical Ledger; drift remains fail-closed. For GSD, refresh `handoff --mode gsd` after `.planning/STATE.md` changes.
 
 Complete through the gate; never hand-edit status to `done`:
 

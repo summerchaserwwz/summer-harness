@@ -152,6 +152,13 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(capsule["next"], ["实现 Handoff projector"])
         self.assertLessEqual((self.repo / ".agent" / "HANDOFF.md").stat().st_size, 4096)
 
+    def test_resume_rejects_handoff_over_4096_bytes(self):
+        (self.repo / ".agent").mkdir()
+        handoff = self.repo / ".agent" / "HANDOFF.md"
+        handoff.write_bytes(b" " * 4097)
+        failed = self.invoke("resume", expected=2)
+        self.assertIn("HANDOFF 超过 4096 字节", failed["error"])
+
     def test_session_identity_is_hashed_before_persistence(self):
         env = os.environ.copy()
         env["CODEX_THREAD_ID"] = "019f-example-raw-session-id"

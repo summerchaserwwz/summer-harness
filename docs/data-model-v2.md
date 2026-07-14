@@ -246,3 +246,11 @@ projector_version, built_at, content_digest
 ```
 
 任何字段不匹配都视为 stale；Projection 可以刷新或重建，但不能反向写 Canonical Ledger。
+
+Handoff 额外遵守：
+
+- 最大 4 KiB、最多五个 `must_read`，不存完整 transcript。
+- 保存 `project_id`、Objective identity/revision、Ledger head/revision、projector version 和 content digest。
+- Acceptance 在 Handoff 中只保存 count/digest；完整列表从 Canonical Ledger 进入最大 32 KiB 的 Capsule。
+- Canonical transaction 提交前必须通过 Handoff/Capsule capacity preflight。
+- v1/GSD 生命周期不能被 v2 projector 覆盖，只能显式迁移。

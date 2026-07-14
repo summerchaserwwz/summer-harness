@@ -1,8 +1,8 @@
 # Summer Harness
 
-Summer Harness 是一套显式启用、文件型、零依赖的个人 Coding Agent 工作流。当前仓库同时包含已经可用的 v1 Kernel，以及正在通过自身 Harness 账本推进的 v2 产品化设计。
+Summer Harness 是一套显式启用、Git-native、local-first 的 Coding Agent continuity kernel。普通任务完全绕过它；启用后，它用一个 Canonical Ledger 和一个 Handoff 解决跨 Session 恢复，再按风险增加 Evidence、Review、多 Agent 治理与可控进化。
 
-> 当前是开发 checkpoint，不是 v0.1 安装发行版。下面的 Python v1 命令需要在本仓库内运行；稳定的全局 `summer` binary、Homebrew 安装和公开 setup 流程仍在路线图中。
+> 当前是开发 checkpoint，不是 v0.1 安装发行版。Go CLI 已提供真实的 `summer resume`、`summer doctor` 和 `summer --version`；写命令暂时仍由 Python v1 shim 承担。Homebrew、签名 Release 和 `summer setup` 仍在路线图中。
 
 默认情况下 Agent 直接完成任务，不创建 Harness 状态。只有用户明确说“使用 Summer Harness / 走 Harness”时，才在项目中创建 `.agent/`；跨 session 只读取 `.agent/HANDOFF.md`，不会重放整段对话。
 
@@ -11,11 +11,37 @@ Summer Harness 是一套显式启用、文件型、零依赖的个人 Coding Age
 - Direct-first：普通任务不进入 Harness。
 - One handoff：`.agent/HANDOFF.md` 是唯一恢复入口。
 - One source of truth：原生模式以 `.agent/ledger/` 为主账本；GSD 模式以 `.planning/` 为主账本，Handoff 只保存指针。
-- Typed memory：长期信息只晋升为 Task、Decision、Fact，不保存聊天流水账。
+- Semantic memory：长期保存目标、Decision、Fact、Evidence、已完成、下一步、阻塞与风险，不默认保存聊天流水账或思维链。
 - Risk-shaped gates：标准任务只要求验收条件和真实验证；高风险/发布任务再增加独立审查。
 - Disposable sessions：新 session 读取有限的恢复胶囊，而不是全量历史。
 
-## 快速使用
+## 从源码安装当前 CLI
+
+需要 Go 1.26 或更高版本：
+
+```bash
+go install ./cmd/summer
+summer --version
+summer resume
+summer doctor
+```
+
+如果 `$GOPATH/bin` 不在 `PATH`，可以直接构建到已有的本地命令目录：
+
+```bash
+go build -o ~/.local/bin/summer ./cmd/summer
+```
+
+`summer resume` 和 `summer doctor` 可以在项目子目录运行，也可显式指定仓库：
+
+```bash
+summer --repo /path/to/project resume
+summer doctor --repo /path/to/project --json
+```
+
+## 当前写入流程
+
+M1 阶段写操作仍使用仓库内的 Python v1 shim；恢复与健康检查使用 Go CLI：
 
 ```bash
 python3 skills/summer-harness/scripts/harnessctl.py init
@@ -27,7 +53,8 @@ python3 skills/summer-harness/scripts/harnessctl.py checkpoint \
   --done "已经完成的工作" \
   --next "唯一下一步" \
   --validation "已执行的验证"
-python3 skills/summer-harness/scripts/harnessctl.py resume
+summer resume
+summer doctor
 ```
 
 完整命令见 `python3 skills/summer-harness/scripts/harnessctl.py --help`。
@@ -42,7 +69,7 @@ python3 skills/summer-harness/scripts/harnessctl.py resume
 - GSD surface 的 Codex 路径适配已修正为 `CODEX_HOME`，并补齐本地 installer runtime，按需切换 profile 不依赖日常 session hook。
 - 旧 CAH、Stellarlink Harness、Super Dev 和未选中的 gstack 入口已移到 `skills-disabled`，没有删除。
 
-检查全局配置：
+维护者检查本机全局 Skill/GSD/gstack 安装（普通用户不需要运行）：
 
 ```bash
 python3 scripts/system_doctor.py
@@ -61,7 +88,7 @@ v2 的目标不是复制一个更重的 Harness，而是把当前可靠的 Hando
 - 人工批准的 Evolution Inbox，自我进化不会自动污染规则。
 - 后续内建 Codex / Claude Worker Runner，但普通任务仍完全绕过 Harness。
 
-当前开发状态：M1-A 已建立 Go `Apply / Query` vertical slice、单 Project Memory/File Ledger、transaction digest chain、CAS、幂等、跨进程 Writer 锁和崩溃恢复。日常使用仍走上面的 Python v1 CLI；在第一条真实 `summer` 命令、Handoff projector 和兼容读取完成前，不会把 Skill 切到未完成的 Go 入口。
+当前开发状态：M1-B 已建立 Go `Apply / Query` vertical slice、单 Project Memory/File Ledger、transaction digest chain、CAS、幂等、跨进程 Writer 锁、崩溃恢复、v1 兼容读取、v2 Handoff projector，以及真实的 `summer resume/doctor`。Handoff 缺失时可由 Canonical Ledger 重建；漂移、旧生命周期冲突和不可投影状态会 fail-closed。
 
 设计资料：
 

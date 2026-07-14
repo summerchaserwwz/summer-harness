@@ -103,11 +103,7 @@ def render_markdown(meta: Dict[str, Any], title: str, sections: Sequence[Tuple[s
     return "\n".join(lines).rstrip() + "\n"
 
 
-def parse_markdown(path: pathlib.Path) -> Tuple[Dict[str, Any], str]:
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
-        raise HarnessError(f"缺少文件：{path}") from exc
+def parse_markdown_text(raw: str, path: pathlib.Path) -> Tuple[Dict[str, Any], str]:
     match = re.match(r"\A---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
     if not match:
         raise HarnessError(f"frontmatter 无效：{path}")
@@ -118,6 +114,14 @@ def parse_markdown(path: pathlib.Path) -> Tuple[Dict[str, Any], str]:
     if meta.get("schema") != SCHEMA:
         raise HarnessError(f"不支持的 schema：{path}")
     return meta, raw[match.end() :]
+
+
+def parse_markdown(path: pathlib.Path) -> Tuple[Dict[str, Any], str]:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise HarnessError(f"缺少文件：{path}") from exc
+    return parse_markdown_text(raw, path)
 
 
 def clean_text(value: Optional[str], label: str, limit: int = MAX_TEXT, required: bool = False) -> str:
@@ -298,7 +302,17 @@ class Repo:
         return self.facts / f"{task_id}.jsonl"
 
     def read_handoff(self) -> Dict[str, Any]:
-        return parse_markdown(self.handoff)[0]
+        try:
+            raw = self.handoff.read_bytes()
+        except FileNotFoundError as exc:
+            raise HarnessError(f"缺少文件：{self.handoff}") from exc
+        if len(raw) > HANDOFF_LIMIT:
+            raise HarnessError(f"HANDOFF 超过 {HANDOFF_LIMIT} 字节；拒绝加载")
+        try:
+            text = raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise HarnessError(f"HANDOFF 不是有效 UTF-8：{self.handoff}") from exc
+        return parse_markdown_text(text, self.handoff)[0]
 
     def read_task(self, task_id: str) -> Dict[str, Any]:
         return parse_markdown(self.task_path(task_id))[0]
