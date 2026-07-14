@@ -1,4 +1,7 @@
 .agent/runtime/
+.agent/cache/
+.agent/ledger/.HEAD-*
+.agent/ledger/transactions/.tx-*/
 config/hooks.local.json
 __pycache__/
 *.pyc

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 # Go 单二进制与按需 Web UI
 

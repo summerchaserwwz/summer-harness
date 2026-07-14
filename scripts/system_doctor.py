@@ -34,7 +34,6 @@ def main() -> int:
         CODEX / "skills" / "summer-harness": REPO / "skills" / "summer-harness",
         CODEX / "skills" / "project-handoff": REPO / "skills" / "project-handoff",
         CODEX / "skills" / "adaptive-harness-router": REPO / "skills" / "adaptive-harness-router",
-        CODEX / "skills" / "ask-matt": REPO / "skills" / "ask-matt",
     }
     for actual, expected in expected_links.items():
         check(f"link:{actual.name}", resolved(actual) == expected.resolve(), f"{actual} -> {resolved(actual)}")
@@ -62,7 +61,7 @@ def main() -> int:
     except (OSError, json.JSONDecodeError) as exc:
         check("public-hooks-safe", False, str(exc))
 
-    for name in ("diagnosing-bugs", "codebase-design", "domain-modeling", "tdd"):
+    for name in ("grilling", "diagnosing-bugs", "codebase-design", "domain-modeling", "tdd"):
         path = CODEX / "skills" / name / "SKILL.md"
         check(f"matt:{name}", path.is_file(), str(path))
 
@@ -72,9 +71,8 @@ def main() -> int:
         if path.is_file()
     )
     check("router-surface", router_files == ["SKILL.md", "agents/openai.yaml"], ", ".join(router_files))
-    ask_matt_text = (REPO / "skills" / "ask-matt" / "SKILL.md").read_text(encoding="utf-8")
-    check("ask-matt-subset", "other Matt skills that are not installed" in ask_matt_text,
-          "local subset navigator, not upstream full-suite router")
+    check("ask-matt-disabled", not (CODEX / "skills" / "ask-matt").exists(),
+          "no second lifecycle router in the active skill surface")
 
     cli = REPO / "skills" / "summer-harness" / "scripts" / "harnessctl.py"
     with tempfile.TemporaryDirectory() as temp:

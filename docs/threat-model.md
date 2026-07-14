@@ -29,7 +29,7 @@ Local malicious process / OS root  超出本地 Harness 可完全防御范围
 
 风险：半提交、手改文件、并发写入或磁盘中断让状态分叉。
 
-措施：单 Writer、expected revision、进程所有权锁、transaction directory、前驱摘要、事件摘要、fsync、原子 HEAD、orphan 检测和 `doctor` fail-closed。Git 是额外审计，不是唯一一致性机制。
+措施：单 Writer、绑定实际 observed revision 的 CAS、进程所有权锁、transaction directory、前驱摘要、事件摘要、fsync、原子 HEAD、本机 ignored pending marker、orphan 检测和 `doctor` fail-closed。只有与 pending marker 精确匹配的唯一后继能自动 adopt；Git 注入但无本机 marker 的 orphan 不会成为 HEAD。Git 是额外审计，不是唯一一致性机制。
 
 ### Handoff poisoning
 

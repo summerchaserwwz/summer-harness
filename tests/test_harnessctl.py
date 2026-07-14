@@ -21,9 +21,9 @@ class HarnessTest(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def invoke(self, *args, expected=0):
+    def invoke(self, *args, expected=0, env=None):
         command = [sys.executable, str(CLI), "--repo", str(self.repo), "--json", *args]
-        result = subprocess.run(command, text=True, capture_output=True)
+        result = subprocess.run(command, text=True, capture_output=True, env=env)
         self.assertEqual(result.returncode, expected, result.stderr + result.stdout)
         return json.loads(result.stdout) if result.stdout else {}
 
@@ -142,6 +142,26 @@ class HarnessTest(unittest.TestCase):
         self.assertIn("HANDOFF 超过", self.invoke(*args, expected=2)["error"])
         self.assertEqual((task_path.read_bytes(), handoff_path.read_bytes()), before)
         self.assertEqual(self.invoke("resume")["task_id"], started["task_id"])
+
+    def test_checkpoint_can_replace_done_with_bounded_summary(self):
+        self.start()
+        self.invoke("checkpoint", "--done", "旧完成项一", "--done", "旧完成项二")
+        self.invoke("checkpoint", "--replace-done", "--done", "M1-A 已完成并通过完整验证", "--next", "实现 Handoff projector")
+        capsule = self.invoke("resume")
+        self.assertEqual(capsule["done"], ["M1-A 已完成并通过完整验证"])
+        self.assertEqual(capsule["next"], ["实现 Handoff projector"])
+        self.assertLessEqual((self.repo / ".agent" / "HANDOFF.md").stat().st_size, 4096)
+
+    def test_session_identity_is_hashed_before_persistence(self):
+        env = os.environ.copy()
+        env["CODEX_THREAD_ID"] = "019f-example-raw-session-id"
+        self.invoke("init", env=env)
+        started = self.invoke("start", "--title", "隐私", "--goal", "不公开原始 session id",
+                              "--acceptance", "仅保存哈希别名", env=env)
+        task_path = self.repo / ".agent" / "ledger" / "tasks" / f"{started['task_id']}.md"
+        task = json.loads(re.match(r"\A---\s*\n(.*?)\n---\s*\n", task_path.read_text(), re.DOTALL).group(1))
+        self.assertNotIn("019f-example-raw-session-id", task_path.read_text())
+        self.assertRegex(task["created_by"], r"^session_[0-9a-f]{16}$")
 
     def test_interrupted_two_file_commit_rolls_forward(self):
         self.invoke("init")

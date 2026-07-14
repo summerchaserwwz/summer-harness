@@ -42,7 +42,10 @@ def utc_now() -> str:
 
 
 def session_id() -> str:
-    return os.environ.get("CODEX_THREAD_ID") or os.environ.get("SUMMER_SESSION_ID") or "unknown"
+    raw = os.environ.get("CODEX_THREAD_ID") or os.environ.get("SUMMER_SESSION_ID")
+    if not raw:
+        return "session_unknown"
+    return "session_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def new_id(prefix: str) -> str:
@@ -450,12 +453,15 @@ def cmd_checkpoint(args: argparse.Namespace, repo: Repo) -> Dict[str, Any]:
     repo.require()
     with repo.lock():
         task, _ = active_task(repo)
-        changed = bool(args.done or args.next or args.validation or args.blocker or args.must_read or args.clear_blockers)
+        changed = bool(args.done or args.next or args.validation or args.blocker or args.must_read or args.clear_blockers or args.replace_done)
         if not changed:
             raise HarnessError("checkpoint 至少需要一个更新字段")
+        if args.replace_done and not args.done:
+            raise HarnessError("--replace-done 必须同时提供至少一个 --done 摘要")
         task["revision"] = int(task.get("revision", 1)) + 1
         task["last_work_session"] = session_id()
-        task["done"] = merge_recent(task.get("done", []), bounded(args.done, MAX_DONE, 1000, "done"), MAX_DONE)
+        incoming_done = bounded(args.done, MAX_DONE, 1000, "done")
+        task["done"] = incoming_done if args.replace_done else merge_recent(task.get("done", []), incoming_done, MAX_DONE)
         task["next"] = bounded(args.next, MAX_NEXT, 1000, "next") if args.next else task.get("next", [])
         incoming_validation = bounded(args.validation, MAX_VALIDATION, MAX_TEXT, "validation")
         task["validation"] = merge_recent(task.get("validation", []), incoming_validation, MAX_VALIDATION)
@@ -866,6 +872,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_many(checkpoint, "--validation", "已执行的验证"); add_many(checkpoint, "--blocker", "当前阻塞")
     add_many(checkpoint, "--must-read", "恢复时必须读取的文件")
     checkpoint.add_argument("--clear-blockers", action="store_true")
+    checkpoint.add_argument("--replace-done", action="store_true",
+                            help="用本次 --done 有界摘要替换旧完成项；详细历史继续保留在 Fact/Decision/Git")
 
     fact = sub.add_parser("fact", help="追加可追溯 Fact，或使旧 Fact 失效")
     fact.add_argument("--statement"); fact.add_argument("--source")

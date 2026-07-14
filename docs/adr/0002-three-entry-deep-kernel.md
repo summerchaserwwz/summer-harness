@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 # 三入口 Deep Kernel
 

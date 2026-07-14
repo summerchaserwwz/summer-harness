@@ -19,6 +19,7 @@ Complexity, file count, duration, subagents, or risk may justify recommending a 
 
 ## Capability Map
 
+- requirements stress-test: `grilling`, only when the user explicitly asks to be grilled or questioned one decision at a time
 - bug root cause: `diagnosing-bugs`
 - architecture and module boundaries: `codebase-design`
 - domain concepts: `domain-modeling`
@@ -27,7 +28,7 @@ Complexity, file count, duration, subagents, or risk may justify recommending a 
 - product/design/QA: one selected gstack skill when its narrow capability fits
 - GSD: phase lifecycle owner, never a capability add-on
 
-`ask-matt` is manual help for the installed Matt subset, not an automatic or stronger lifecycle router.
+Do not route through `ask-matt`. The upstream skill owns a separate idea-to-ship flow and would duplicate this lifecycle router.
 
 ## State Rule
 
@@ -46,4 +47,3 @@ Route: <Direct | Direct + Skill | Direct + Handoff | Summer native | GSD backend
 Reason: <one sentence>
 Persistent state: <none | .agent/HANDOFF.md | .agent/ledger | .planning>
 ```
-

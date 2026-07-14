@@ -1,6 +1,0 @@
-interface:
-  display_name: "Ask Matt"
-  short_description: "Navigate the installed Matt capability subset"
-  default_prompt: "Use $ask-matt to choose among the installed Matt capability skills."
-policy:
-  allow_implicit_invocation: false

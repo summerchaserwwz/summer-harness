@@ -10,7 +10,7 @@
 
 ## M1 — Go Deep Kernel
 
-- Go module、三入口 Engine、File/Memory Ledger Adapter。
+- Go module、`Apply / Query` Engine vertical slice、File/Memory Ledger Adapter；`Execute` 在 M2 具备真实 Evidence contract 后加入。
 - v1 reader、兼容 CLI、golden contract tests。
 - transaction chain、idempotency、CAS、fsync、recovery、snapshot。
 - `summer migrate --dry-run` 与可回滚迁移。

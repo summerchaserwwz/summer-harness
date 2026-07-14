@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 # Transaction Ledger 与可重建 Projection
 

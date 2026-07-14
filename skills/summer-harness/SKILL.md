@@ -71,13 +71,14 @@ Never run a parallel native Summer Task for the same GSD task.
 
 Skills are capabilities, not lifecycle owners. Select the smallest relevant Matt skill directly:
 
+- requirements stress-test: `grilling`, only after the user explicitly asks for one-question-at-a-time interrogation
 - bug root cause: `diagnosing-bugs`
 - architecture or module boundaries: `codebase-design`
 - domain concepts: `domain-modeling`
 - TDD: only when explicitly requested or justified by risk
 - code review: at a review gate or when explicitly requested
 
-Do not auto-call `ask-matt`; it is help/navigation, not a stronger router. Do not let a capability skill create another state system.
+Do not route through `ask-matt`; its upstream idea-to-ship flow duplicates the Summer lifecycle. Do not let a capability skill create another state system.
 
 ## Resume and Close
 
@@ -86,6 +87,15 @@ For a native Summer task, checkpoint at every session boundary, phase transition
 ```bash
 python3 <skill-dir>/scripts/harnessctl.py checkpoint --done "..." --next "..." --validation "..."
 python3 <skill-dir>/scripts/harnessctl.py doctor
+```
+
+If the 4 KiB Handoff is approaching its limit, replace old completion bullets with one bounded summary. Detailed history remains in Fact, Decision, and Git:
+
+```bash
+python3 <skill-dir>/scripts/harnessctl.py checkpoint \
+  --replace-done \
+  --done "<bounded milestone summary>" \
+  --next "<one concrete next action>"
 ```
 
 For a GSD task, do not call `checkpoint`. Let GSD update `.planning/`, then refresh the pointer with `handoff --mode gsd ...` and run `doctor`. For Direct work, use `$project-handoff`.

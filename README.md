@@ -2,6 +2,8 @@
 
 Summer Harness 是一套显式启用、文件型、零依赖的个人 Coding Agent 工作流。当前仓库同时包含已经可用的 v1 Kernel，以及正在通过自身 Harness 账本推进的 v2 产品化设计。
 
+> 当前是开发 checkpoint，不是 v0.1 安装发行版。下面的 Python v1 命令需要在本仓库内运行；稳定的全局 `summer` binary、Homebrew 安装和公开 setup 流程仍在路线图中。
+
 默认情况下 Agent 直接完成任务，不创建 Harness 状态。只有用户明确说“使用 Summer Harness / 走 Harness”时，才在项目中创建 `.agent/`；跨 session 只读取 `.agent/HANDOFF.md`，不会重放整段对话。
 
 ## 设计边界
@@ -35,7 +37,8 @@ python3 skills/summer-harness/scripts/harnessctl.py resume
 - `~/.codex/AGENTS.md` 链接到 `config/AGENTS.md`。
 - Summer Harness 不安装隐式 Harness/GSD session hooks，也不覆盖用户已有 hooks。仓库中的 `config/hooks.json` 只是空白安全示例；作者本机的其他 hooks 保存在被忽略的 `config/hooks.local.json`。
 - `summer-harness` 与 `project-handoff` 以符号链接安装，仓库是唯一可编辑来源。
-- GSD 使用 `standard` surface；Matt 仅安装 `ask-matt`、`diagnosing-bugs`、`codebase-design`、`domain-modeling`、`tdd`。
+- GSD 使用 `standard` surface；Matt 仅按需安装 `grilling`、`diagnosing-bugs`、`codebase-design`、`domain-modeling`、`tdd`。
+- 上游 `ask-matt` 不作为默认入口：它会建立一条完整 idea-to-ship 流程，与 Direct-first 和唯一生命周期所有者重复；需要逐问澄清时直接显式调用 `grilling`。
 - GSD surface 的 Codex 路径适配已修正为 `CODEX_HOME`，并补齐本地 installer runtime，按需切换 profile 不依赖日常 session hook。
 - 旧 CAH、Stellarlink Harness、Super Dev 和未选中的 gstack 入口已移到 `skills-disabled`，没有删除。
 
@@ -57,6 +60,8 @@ v2 的目标不是复制一个更重的 Harness，而是把当前可靠的 Hando
 - SQLite、搜索和关系图仅作为可删除重建的 Projection。
 - 人工批准的 Evolution Inbox，自我进化不会自动污染规则。
 - 后续内建 Codex / Claude Worker Runner，但普通任务仍完全绕过 Harness。
+
+当前开发状态：M1-A 已建立 Go `Apply / Query` vertical slice、单 Project Memory/File Ledger、transaction digest chain、CAS、幂等、跨进程 Writer 锁和崩溃恢复。日常使用仍走上面的 Python v1 CLI；在第一条真实 `summer` 命令、Handoff projector 和兼容读取完成前，不会把 Skill 切到未完成的 Go 入口。
 
 设计资料：
 

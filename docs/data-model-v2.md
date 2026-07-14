@@ -20,7 +20,7 @@ type CommandEnvelope struct {
 }
 ```
 
-同一 `ProjectID + IdempotencyKey` 只能产生一个 committed receipt。`ExpectedRevision` 不匹配时拒绝，不自动覆盖。
+同一 `ProjectID + IdempotencyKey` 只能产生一个 committed receipt。传输级重试必须复用完整 Command Envelope；跨 Session 恢复依赖 Handoff，而不是用相同 key 构造新的身份或时间戳。`ExpectedRevision` 必须等于执行领域校验时实际观察到的 revision，不接受“未来 revision”，也不自动覆盖。
 
 ## Actor
 
@@ -216,18 +216,25 @@ type EvolutionCandidate struct {
 
 ```go
 type TransactionManifest struct {
-    TransactionID string      `json:"transaction_id"`
-    PreviousDigest string     `json:"previous_digest"`
-    Revision      uint64      `json:"revision"`
-    Command       CommandRef  `json:"command"`
-    Actor         ActorRef    `json:"actor"`
-    EventFiles    []ObjectRef `json:"event_files"`
-    EventsDigest  string      `json:"events_digest"`
-    CommittedAt   time.Time   `json:"committed_at"`
+    Schema         string          `json:"schema"`
+    TransactionID  string          `json:"transaction_id"`
+    ProjectID      string          `json:"project_id"`
+    CommandID      string          `json:"command_id"`
+    CommandDigest  string          `json:"command_digest"`
+    IdempotencyKey string          `json:"idempotency_key"`
+    CorrelationID  string          `json:"correlation_id"`
+    CausationID    string          `json:"causation_id,omitempty"`
+    IssuedAt       time.Time       `json:"issued_at"`
+    Actor          json.RawMessage `json:"actor"`
+    Revision       uint64          `json:"revision"`
+    PreviousDigest string          `json:"previous_digest"`
+    Digest         string          `json:"digest"`
+    CommittedAt    time.Time       `json:"committed_at"`
+    EventFiles     []string        `json:"event_files"`
 }
 ```
 
-Manifest、事件集合和前驱摘要共同形成 transaction digest。只有被 `HEAD` 引用且摘要链连续的 transaction 参与状态 fold。
+M1 使用 transaction 目录内的顺序文件名 `0001.json`、`0002.json`，避免在内容寻址 Object Store 尚未实现时提前引入 `ObjectRef` 或独立 `EventsDigest`。Manifest、完整事件集合和前驱摘要共同形成 transaction digest。只有被 `HEAD` 引用且摘要链连续的 transaction 参与状态 fold。崩溃恢复只自动接纳与本机 ignored runtime pending marker 精确匹配的唯一后继；没有 marker 的 Git 注入 orphan 必须 fail-closed。
 
 ## Projection Contract
 

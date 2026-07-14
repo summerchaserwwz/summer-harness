@@ -26,7 +26,7 @@
 4. `Summer native`：用户显式要求 Harness，且任务边界明确但需要持久 Task / Decision / Fact、证据或风险门禁。
 5. `GSD backend`：用户显式要求 Harness 或 GSD，且工作确实是多阶段、需要 fresh-context 规划执行；`.planning/` 是唯一主账本。
 
-Matt Skills 只作为能力插件：bug 根因用 `diagnosing-bugs`，代码边界用 `codebase-design`，领域建模用 `domain-modeling`；TDD 和 review 仅在用户明确要求或风险门需要时调用。`ask-matt` 仅用于人工帮助/导航，不自动调用，不作为第二个路由器。
+Matt Skills 只作为能力插件：用户明确要求“拷问我/逐问确认需求”时用 `grilling`，bug 根因用 `diagnosing-bugs`，代码边界用 `codebase-design`，领域建模用 `domain-modeling`；TDD 和 review 仅在用户明确要求或风险门需要时调用。`grilling` 一次只问一个决策问题，并在用户确认共同理解前暂停实现。不上线 `ask-matt` 作为第二个路由器。
 
 gstack 同样只作为窄能力：需求澄清用 `spec` 或 `plan-ceo-review`，设计用 `design-consultation` / `design-review`，浏览器与 QA 用 `browse` / `qa` / `qa-only`，落地前审查用 `review`。不因任务属于产品、设计或 QA 就自动进入完整流程。
 
