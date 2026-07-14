@@ -121,6 +121,31 @@ class HarnessTest(unittest.TestCase):
         self.assertNotIn("facts", capsule)
         self.assertTrue(self.invoke("doctor")["ok"])
 
+    def test_v1_writer_rejects_v2_canonical_ledger(self):
+        ledger = self.repo / ".agent" / "ledger"
+        ledger.mkdir(parents=True)
+        (ledger / "HEAD").write_text('{"schema":"summer.ledger-head/v2"}\n')
+        failed = self.invoke("handoff", "--mode", "direct", "--goal", "不能覆盖 v2", expected=2)
+        self.assertIn("v2 Canonical Ledger", failed["error"])
+        self.assertFalse((self.repo / ".agent" / "HANDOFF.md").exists())
+
+    def test_v1_writer_rejects_dangling_v2_head(self):
+        ledger = self.repo / ".agent" / "ledger"
+        ledger.mkdir(parents=True)
+        (ledger / "HEAD").symlink_to("missing-head")
+        failed = self.invoke("handoff", "--mode", "direct", "--goal", "不能覆盖", expected=2)
+        self.assertIn("v2 Canonical Ledger", failed["error"])
+
+    def test_v1_writer_rejects_unknown_handoff_without_rewriting_it(self):
+        agent = self.repo / ".agent"
+        agent.mkdir()
+        handoff = agent / "HANDOFF.md"
+        original = "not valid frontmatter\n"
+        handoff.write_text(original)
+        failed = self.invoke("handoff", "--mode", "direct", "--goal", "不能覆盖", expected=2)
+        self.assertIn("v2 Canonical Ledger", failed["error"])
+        self.assertEqual(handoff.read_text(), original)
+
     def test_start_handoff_overflow_leaves_no_orphan(self):
         self.invoke("init")
         args = ["start", "--title", "大任务", "--goal", "G" * 900, "--acceptance", "通过"]
@@ -151,6 +176,22 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(capsule["done"], ["M1-A 已完成并通过完整验证"])
         self.assertEqual(capsule["next"], ["实现 Handoff projector"])
         self.assertLessEqual((self.repo / ".agent" / "HANDOFF.md").stat().st_size, 4096)
+
+    def test_checkpoint_can_replace_validation_with_bounded_summary(self):
+        self.start()
+        for index in range(8):
+            self.invoke("checkpoint", "--validation", f"validation-{index}")
+        self.invoke("checkpoint", "--replace-validation", "--validation", "全量验证通过")
+        capsule = self.invoke("resume")
+        self.assertEqual(capsule["validation"], ["全量验证通过"])
+
+    def test_v1_writer_rejects_nonempty_v2_transactions_without_head(self):
+        self.start()
+        transaction = self.repo / ".agent" / "ledger" / "transactions" / "tx_partial"
+        transaction.mkdir(parents=True)
+        (transaction / "manifest.json").write_text("{}\n")
+        failed = self.invoke("checkpoint", "--done", "不得写入", expected=2)
+        self.assertIn("v2 Canonical Ledger", failed["error"])
 
     def test_resume_rejects_handoff_over_4096_bytes(self):
         (self.repo / ".agent").mkdir()
@@ -185,7 +226,7 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(len(list((self.repo / ".agent" / "ledger" / "tasks").glob("*.md"))), 1)
         self.assertFalse((self.repo / ".agent" / "runtime" / "transaction.json").exists())
 
-    def test_live_stale_looking_lock_cannot_be_stolen(self):
+    def test_live_lifecycle_lock_cannot_be_stolen(self):
         holder = """
 import importlib.util, pathlib, sys, time
 spec = importlib.util.spec_from_file_location('summer_harness_cli', sys.argv[1])
@@ -200,10 +241,6 @@ with repo.lock():
                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             self.assertEqual(process.stdout.readline().strip(), "locked")
-            lock = self.repo / ".agent" / "runtime" / "write.lock"
-            old = time.time() - 1000
-            lock.touch()
-            os.utime(lock, (old, old))
             failed = self.invoke("handoff", "--mode", "direct", "--goal", "不能抢锁", expected=2)
             self.assertIn("另一个 Harness 写入者", failed["error"])
         finally:

@@ -1,0 +1,32 @@
+{
+  "event_id": "evt_d9d6bf71fac868ded2d32764",
+  "kind": "FactRecorded",
+  "entity_id": "fact_20260714T161127515342Z_7359cf",
+  "data": {
+    "schema": "summer.legacy-import/v1",
+    "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+    "legacy_entity_id": "fact_20260714T161127515342Z_7359cf",
+    "legacy_task_id": "task_20260714T154324166611Z_8f7b2c",
+    "objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "source_path": ".agent/ledger/facts/task_20260714T154324166611Z_8f7b2c.jsonl",
+    "source_digest": "4ccd43d656087125a0c7b8a5b91c9b6dd8417767d8f3af8e4a603fc43ed44093",
+    "source_line": 5,
+    "record": {
+      "schema": "summer-harness/v1",
+      "kind": "fact",
+      "id": "fact_20260714T161127515342Z_7359cf",
+      "task_id": "task_20260714T154324166611Z_8f7b2c",
+      "statement": "已创建公开 GitHub 仓库 summerchaserwwz/summer-harness；main 已推送，Apache-2.0 被识别，Issues、Discussions 和项目 topics 已启用。",
+      "source": "github:https://github.com/summerchaserwwz/summer-harness:2026-07-14",
+      "confidence": "high",
+      "tags": [
+        "release",
+        "repository"
+      ],
+      "memory_class": "durable",
+      "observed_at": "2026-07-14T16:11:27.515385Z",
+      "created_ns": 1784045487515391000,
+      "session": "019f5f82-aa54-7d93-b921-181c740d3c76"
+    }
+  }
+}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,119 @@ func TestV2ResumeRejectsSemanticallyDriftedHandoffWithValidContentDigest(t *test
 	tampered = append(tampered, []byte("\n---\n")...)
 	tampered = append(tampered, body...)
 	if err := os.WriteFile(path, tampered, 0o644); err != nil {
+		t.Fatalf("write tampered handoff: %v", err)
+	}
+
+	_, err = kernel.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if code := continuity.ErrorCode(err); code != continuity.CodeHandoffDrift {
+		t.Fatalf("error = %v, code = %q, want %q", err, code, continuity.CodeHandoffDrift)
+	}
+}
+
+func TestSaveRejectsSameRevisionHandoffBodyDriftBeforeCommit(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	kernel := startSecurityFixture(t, root)
+	resumeView, err := kernel.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resume := resumeView.(engine.ResumeView).Capsule
+	path := filepath.Join(root, ".agent", "HANDOFF.md")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, body := splitFixtureMarkdown(t, raw)
+	body = bytes.Replace(body, []byte("跨 session 恢复不信任聊天"), []byte("同 revision 正文被篡改"), 1)
+	tampered := append([]byte("---\n"), meta...)
+	tampered = append(tampered, []byte("\n---\n")...)
+	tampered = append(tampered, body...)
+	if err := os.WriteFile(path, tampered, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(engine.SaveObjective{
+		ObjectiveID: resume.ObjectiveID, ExpectedObjectiveRevision: resume.Revision, Done: []string{"不得提交"},
+	})
+	receipt, err := kernel.Apply(context.Background(), engine.CommandEnvelope{
+		Schema: engine.CommandSchemaV2, CommandID: "cmd-drifted-save", IdempotencyKey: "drifted-save",
+		CorrelationID: "drifted-save", ProjectID: resume.ProjectID, ExpectedRevision: resume.LedgerRevision,
+		Actor:    engine.ActorRef{ActorID: "user-fixture", SessionID: "session-drifted-save", Runtime: "go-test", Role: engine.ActorUser},
+		IssuedAt: time.Date(2026, 7, 15, 3, 30, 0, 0, time.UTC), Kind: engine.CommandSaveObjective, Payload: payload,
+	})
+	if err != nil || receipt.Accepted || receipt.Rejection == nil || receipt.Rejection.Code != string(continuity.CodeHandoffDrift) {
+		t.Fatalf("save receipt=%#v err=%v", receipt, err)
+	}
+	manifests := readFixtureLedgerManifests(t, root)
+	if len(manifests) != 1 || manifests[1].Revision != 1 {
+		t.Fatalf("canonical ledger advanced after drift: %#v", manifests)
+	}
+}
+
+func TestV2ResumeRejectsMatchingTamperedSnapshotAndHandoff(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	kernel := startSecurityFixture(t, root)
+
+	snapshotPath := filepath.Join(root, ".agent", "cache", "resume.snapshot.json")
+	snapshotRaw, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		t.Fatalf("read snapshot: %v", err)
+	}
+	var snapshot fixtureResumeSnapshot
+	if err := json.Unmarshal(snapshotRaw, &snapshot); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
+	}
+	snapshot.State.Goal = "伪造但未进入 Canonical Ledger 的目标"
+	digestState := snapshot.State
+	digestState.BuiltAt = time.Time{}
+	stateRaw, err := json.Marshal(digestState)
+	if err != nil {
+		t.Fatalf("encode snapshot state: %v", err)
+	}
+	snapshot.StateDigest = fmt.Sprintf("%x", sha256.Sum256(stateRaw))
+	snapshot.ContentDigest = ""
+	snapshotDigestInput, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("encode snapshot digest input: %v", err)
+	}
+	snapshot.ContentDigest = fmt.Sprintf("%x", sha256.Sum256(snapshotDigestInput))
+	encodedSnapshot, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		t.Fatalf("encode tampered snapshot: %v", err)
+	}
+	if err := os.WriteFile(snapshotPath, append(encodedSnapshot, '\n'), 0o600); err != nil {
+		t.Fatalf("write tampered snapshot: %v", err)
+	}
+
+	handoffPath := filepath.Join(root, ".agent", "HANDOFF.md")
+	handoffRaw, err := os.ReadFile(handoffPath)
+	if err != nil {
+		t.Fatalf("read handoff: %v", err)
+	}
+	metaRaw, body := splitFixtureMarkdown(t, handoffRaw)
+	var meta map[string]any
+	if err := json.Unmarshal(metaRaw, &meta); err != nil {
+		t.Fatalf("decode handoff: %v", err)
+	}
+	meta["goal"] = snapshot.State.Goal
+	delete(meta, "content_digest")
+	handoffDigestInput, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("encode handoff digest input: %v", err)
+	}
+	meta["content_digest"] = fmt.Sprintf("%x", sha256.Sum256(handoffDigestInput))
+	encodedMeta, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		t.Fatalf("encode tampered handoff: %v", err)
+	}
+	body = bytes.ReplaceAll(body, []byte("跨 session 恢复不信任聊天"), []byte(snapshot.State.Goal))
+	tamperedHandoff := append([]byte("---\n"), encodedMeta...)
+	tamperedHandoff = append(tamperedHandoff, []byte("\n---\n")...)
+	tamperedHandoff = append(tamperedHandoff, body...)
+	if err := os.WriteFile(handoffPath, tamperedHandoff, 0o644); err != nil {
 		t.Fatalf("write tampered handoff: %v", err)
 	}
 
@@ -137,7 +251,109 @@ func TestV2ResumeRebuildsOnlyAMissingHandoffFromCanonicalLedger(t *testing.T) {
 	}
 }
 
-func TestStartObjectiveRejectsLegacyLifecycleBeforeOpeningV2Ledger(t *testing.T) {
+func TestResumeAdoptsAuthorizedPendingTransactionBeforeUsingSnapshot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	kernel := startSecurityFixture(t, root)
+	handoffV1, err := os.ReadFile(filepath.Join(root, ".agent", "HANDOFF.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotPath := filepath.Join(root, ".agent", "cache", "resume.snapshot.json")
+	snapshotV1, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumeView, err := kernel.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resume := resumeView.(engine.ResumeView).Capsule
+	next := []string{"恢复 revision 2"}
+	payload, _ := json.Marshal(engine.SaveObjective{
+		ObjectiveID: resume.ObjectiveID, ExpectedObjectiveRevision: resume.Revision,
+		Done: []string{"transaction 已落盘"}, Next: &next,
+	})
+	receipt, err := kernel.Apply(context.Background(), engine.CommandEnvelope{
+		Schema: engine.CommandSchemaV2, CommandID: "cmd-pending-recovery", IdempotencyKey: "pending-recovery",
+		CorrelationID: "pending-recovery", ProjectID: resume.ProjectID, ExpectedRevision: resume.LedgerRevision,
+		Actor:    engine.ActorRef{ActorID: "user-fixture", SessionID: "session-pending", Runtime: "go-test", Role: engine.ActorUser},
+		IssuedAt: time.Date(2026, 7, 15, 4, 0, 0, 0, time.UTC), Kind: engine.CommandSaveObjective, Payload: payload,
+	})
+	if err != nil || !receipt.Accepted || receipt.NewRevision != 2 {
+		t.Fatalf("save receipt=%#v err=%v", receipt, err)
+	}
+	manifests := readFixtureLedgerManifests(t, root)
+	first, second := manifests[1], manifests[2]
+	writeFixtureJSON(t, filepath.Join(root, ".agent", "ledger", "HEAD"), map[string]any{
+		"schema": "summer.ledger-head/v2", "project_id": first.ProjectID,
+		"transaction_id": first.TransactionID, "revision": first.Revision,
+		"digest": first.Digest, "resume_digest": first.ResumeDigest,
+	})
+	writeFixtureJSON(t, filepath.Join(root, ".agent", "runtime", "ledger.pending.json"), map[string]any{
+		"schema": "summer.pending-commit/v2", "project_id": second.ProjectID,
+		"transaction_id": second.TransactionID, "revision": second.Revision,
+		"previous_digest": second.PreviousDigest, "digest": second.Digest,
+	})
+	if err := os.WriteFile(filepath.Join(root, ".agent", "HANDOFF.md"), handoffV1, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(snapshotPath, snapshotV1, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := workspace.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := reopened.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if err != nil {
+		t.Fatalf("resume pending transaction: %v", err)
+	}
+	capsule := view.(engine.ResumeView).Capsule
+	if capsule.LedgerRevision != 2 || !reflect.DeepEqual(capsule.Done, []string{"transaction 已落盘"}) {
+		t.Fatalf("capsule=%#v", capsule)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agent", "runtime", "ledger.pending.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("pending marker remains: %v", err)
+	}
+}
+
+func TestResumeRejectsSnapshotWhenLedgerPredecessorIsMissing(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	kernel := startSecurityFixture(t, root)
+	resumeView, err := kernel.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resume := resumeView.(engine.ResumeView).Capsule
+	payload, _ := json.Marshal(engine.SaveObjective{ObjectiveID: resume.ObjectiveID, ExpectedObjectiveRevision: resume.Revision, Done: []string{"revision 2"}})
+	receipt, err := kernel.Apply(context.Background(), engine.CommandEnvelope{
+		Schema: engine.CommandSchemaV2, CommandID: "cmd-broken-chain", IdempotencyKey: "broken-chain",
+		CorrelationID: "broken-chain", ProjectID: resume.ProjectID, ExpectedRevision: resume.LedgerRevision,
+		Actor:    engine.ActorRef{ActorID: "user-fixture", SessionID: "session-broken-chain", Runtime: "go-test", Role: engine.ActorUser},
+		IssuedAt: time.Date(2026, 7, 15, 4, 30, 0, 0, time.UTC), Kind: engine.CommandSaveObjective, Payload: payload,
+	})
+	if err != nil || !receipt.Accepted || receipt.NewRevision != 2 {
+		t.Fatalf("save receipt=%#v err=%v", receipt, err)
+	}
+	first := readFixtureLedgerManifests(t, root)[1]
+	if err := os.RemoveAll(filepath.Join(root, ".agent", "ledger", "transactions", first.TransactionID)); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := workspace.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = reopened.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if err == nil || !strings.Contains(err.Error(), "valid predecessor") {
+		t.Fatalf("resume error=%v, want broken predecessor rejection", err)
+	}
+}
+
+func TestStartObjectiveRejectsInvalidLegacyHandoffBeforeOpeningV2Ledger(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -147,8 +363,8 @@ func TestStartObjectiveRejectsLegacyLifecycleBeforeOpeningV2Ledger(t *testing.T)
 		t.Fatalf("open workspace: %v", err)
 	}
 	receipt := applySecurityObjective(t, kernel, "legacy-conflict", "不能建立第二生命周期", []string{"要求显式迁移"})
-	if receipt.Accepted || receipt.Rejection == nil || receipt.Rejection.Code != string(continuity.CodeMigrationRequired) {
-		t.Fatalf("receipt = %#v, want MIGRATION_REQUIRED", receipt)
+	if receipt.Accepted || receipt.Rejection == nil || receipt.Rejection.Code != string(continuity.CodeHandoffInvalid) {
+		t.Fatalf("receipt = %#v, want HANDOFF_INVALID", receipt)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".agent", "ledger", "HEAD")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("legacy conflict created canonical HEAD: %v", err)
@@ -208,6 +424,35 @@ func TestOrphanV2HandoffCannotCreateACanonicalLedger(t *testing.T) {
 		t.Fatalf("receipt=%#v, want LIFECYCLE_CONFLICT", receipt)
 	}
 	assertNoCanonicalHead(t, targetRoot)
+}
+
+func TestResumeRejectsSnapshotCacheDirectorySymlink(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	_ = startSecurityFixture(t, root)
+	cache := filepath.Join(root, ".agent", "cache")
+	snapshotRaw, err := os.ReadFile(filepath.Join(cache, "resume.snapshot.json"))
+	if err != nil {
+		t.Fatalf("read generated snapshot: %v", err)
+	}
+	if err := os.RemoveAll(cache); err != nil {
+		t.Fatalf("remove cache: %v", err)
+	}
+	outside := t.TempDir()
+	mustWrite(t, filepath.Join(outside, "resume.snapshot.json"), string(snapshotRaw))
+	if err := os.Symlink(outside, cache); err != nil {
+		t.Fatalf("symlink cache: %v", err)
+	}
+
+	kernel, err := workspace.Open(root)
+	if err != nil {
+		t.Fatalf("open workspace: %v", err)
+	}
+	_, err = kernel.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if continuity.ErrorCode(err) != continuity.CodeUnsafeReference {
+		t.Fatalf("resume error = %v, want UNSAFE_REFERENCE", err)
+	}
 }
 
 func TestStartObjectiveRejectsUnprojectableCanonicalStateBeforeCommit(t *testing.T) {
@@ -327,4 +572,75 @@ func splitFixtureMarkdown(t *testing.T, raw []byte) ([]byte, []byte) {
 		t.Fatal("handoff has no closing fence")
 	}
 	return raw[4 : 4+end], raw[4+end+5:]
+}
+
+type fixtureResumeSnapshot struct {
+	Schema           string                     `json:"schema"`
+	ProjectID        string                     `json:"project_id"`
+	LedgerRevision   uint64                     `json:"ledger_revision"`
+	LedgerHead       string                     `json:"ledger_head"`
+	ProjectorVersion int                        `json:"projector_version"`
+	BuiltAt          time.Time                  `json:"built_at"`
+	StateDigest      string                     `json:"state_digest"`
+	State            fixtureResumeSnapshotState `json:"state"`
+	ContentDigest    string                     `json:"content_digest"`
+}
+
+type fixtureResumeSnapshotState struct {
+	ProjectID         string    `json:"project_id"`
+	ObjectiveID       string    `json:"objective_id"`
+	ObjectiveStatus   string    `json:"objective_status"`
+	ObjectiveRevision uint64    `json:"objective_revision"`
+	Goal              string    `json:"goal"`
+	Profile           string    `json:"profile"`
+	Acceptance        []string  `json:"acceptance"`
+	Done              []string  `json:"done"`
+	Next              []string  `json:"next"`
+	Validation        []string  `json:"validation"`
+	Blockers          []string  `json:"blockers"`
+	MustRead          []string  `json:"must_read"`
+	ResumeCommand     string    `json:"resume_command"`
+	BuiltAt           time.Time `json:"built_at"`
+}
+
+type fixtureLedgerManifest struct {
+	TransactionID  string `json:"transaction_id"`
+	ProjectID      string `json:"project_id"`
+	ResumeDigest   string `json:"resume_digest"`
+	Revision       uint64 `json:"revision"`
+	PreviousDigest string `json:"previous_digest"`
+	Digest         string `json:"digest"`
+}
+
+func readFixtureLedgerManifests(t *testing.T, root string) map[uint64]fixtureLedgerManifest {
+	t.Helper()
+	directory := filepath.Join(root, ".agent", "ledger", "transactions")
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(map[uint64]fixtureLedgerManifest, len(entries))
+	for _, entry := range entries {
+		var manifest fixtureLedgerManifest
+		raw, err := os.ReadFile(filepath.Join(directory, entry.Name(), "manifest.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, &manifest); err != nil {
+			t.Fatal(err)
+		}
+		result[manifest.Revision] = manifest
+	}
+	return result
+}
+
+func writeFixtureJSON(t *testing.T, path string, value any) {
+	t.Helper()
+	raw, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -47,6 +47,7 @@ type Capsule struct {
 	ObjectiveID    string            `json:"objective_id,omitempty"`
 	LedgerRevision uint64            `json:"ledger_revision,omitempty"`
 	LedgerHead     string            `json:"ledger_head,omitempty"`
+	ResumeDigest   string            `json:"resume_digest,omitempty"`
 }
 
 type Omitted struct {
@@ -55,8 +56,9 @@ type Omitted struct {
 }
 
 type Cursor struct {
-	Revision uint64
-	Digest   string
+	Revision     uint64
+	Digest       string
+	ResumeDigest string
 }
 
 type State struct {

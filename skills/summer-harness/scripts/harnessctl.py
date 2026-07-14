@@ -11,11 +11,17 @@ import json
 import os
 import pathlib
 import re
+import stat
 import sys
 import tempfile
 import time
 import uuid
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 
 SCHEMA = "summer-harness/v1"
@@ -156,6 +162,7 @@ class Repo:
         self.archive = self.agent / "archive"
         self.runtime = self.agent / "runtime"
         self.lock_path = self.runtime / "write.lock"
+        self.lifecycle_lock_path = self.runtime / "lifecycle.lock"
         self.transaction_path = self.runtime / "transaction.json"
 
     def require(self) -> None:
@@ -173,7 +180,7 @@ class Repo:
                 raise HarnessError(f"Harness 状态路径不能是符号链接：{path}")
             if path.exists() and not path.is_dir():
                 raise HarnessError(f"Harness 状态目录被非目录占用：{path}")
-        for path in (self.config, self.handoff, self.lock_path, self.transaction_path):
+        for path in (self.config, self.handoff, self.lock_path, self.lifecycle_lock_path, self.transaction_path):
             if path.is_symlink():
                 raise HarnessError(f"Harness 状态文件不能是符号链接：{path}")
         for directory, pattern in ((self.tasks, "*.md"), (self.decisions, "*.md"), (self.facts, "*.jsonl")):
@@ -222,35 +229,91 @@ class Repo:
         except (OSError, json.JSONDecodeError):
             return {}
 
+    def has_v2_footprint(self) -> bool:
+        for path in (self.agent / "ledger" / "HEAD", self.runtime / "ledger.pending.json"):
+            if path.is_symlink() or path.exists():
+                return True
+        transactions = self.agent / "ledger" / "transactions"
+        if transactions.is_symlink() or (transactions.exists() and (not transactions.is_dir() or any(transactions.iterdir()))):
+            return True
+        if not self.handoff.exists():
+            return False
+        try:
+            raw = self.handoff.read_text(encoding="utf-8")
+            match = re.match(r"\A---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
+            if not match:
+                return True
+            return json.loads(match.group(1)).get("schema") != SCHEMA
+        except (OSError, json.JSONDecodeError):
+            return True
+
     @contextlib.contextmanager
-    def lock(self) -> Iterator[None]:
+    def lifecycle_lock(self) -> Iterator[None]:
         self.ensure_safe_state_tree()
-        self.runtime.mkdir(parents=True, exist_ok=True)
-        token = uuid.uuid4().hex
-        payload = json.dumps({"pid": os.getpid(), "token": token, "created_at": utc_now()})
+        handle = None
+        if os.name == "nt":
+            self.runtime.mkdir(parents=True, exist_ok=True)
+            flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+            fd = os.open(str(self.lifecycle_lock_path), flags, 0o600)
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                os.close(fd)
+                raise HarnessError("生命周期锁不是常规文件：.agent/runtime/lifecycle.lock")
+            handle = os.fdopen(fd, "r+b", buffering=0)
+        else:
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            fd = os.open(str(self.root), flags)
+            if not stat.S_ISDIR(os.fstat(fd).st_mode):
+                os.close(fd)
+                raise HarnessError("生命周期锁目标不是常规目录：仓库根目录")
+        deadline = time.monotonic() + 2
         try:
-            fd = os.open(str(self.lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            owner = self._read_lock()
-            age = time.time() - self.lock_path.stat().st_mtime if self.lock_path.exists() else 0
-            if self._pid_alive(owner.get("pid")) or age <= 600:
-                raise HarnessError("存在另一个 Harness 写入者；请检查 .agent/runtime/write.lock")
-            self.lock_path.unlink(missing_ok=True)
-            fd = os.open(str(self.lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        try:
-            os.write(fd, payload.encode("utf-8"))
-            os.fsync(fd)
-            os.close(fd)
-            self.recover_transaction()
+            if os.name == "nt":
+                assert handle is not None
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+            while True:
+                try:
+                    if os.name == "nt":
+                        assert handle is not None
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except (BlockingIOError, OSError):
+                    if time.monotonic() >= deadline:
+                        raise HarnessError("存在另一个 Harness 写入者；请稍后重试")
+                    time.sleep(0.01)
             yield
         finally:
-            owner = self._read_lock()
-            if owner.get("token") == token:
-                with contextlib.suppress(FileNotFoundError):
-                    self.lock_path.unlink()
-            if not self.config.exists():
-                with contextlib.suppress(OSError):
-                    self.runtime.rmdir()
+            with contextlib.suppress(OSError):
+                if os.name == "nt":
+                    assert handle is not None
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+            if handle is not None:
+                handle.close()
+            else:
+                os.close(fd)
+
+    @contextlib.contextmanager
+    def lock(self, allow_v2: bool = False) -> Iterator[None]:
+        with self.lifecycle_lock():
+            if not allow_v2 and self.has_v2_footprint():
+                raise HarnessError("检测到 Summer v2 Canonical Ledger；旧 v1 writer 已停止写入，请使用 summer CLI 或显式迁移")
+            self.recover_transaction()
+            yield
+
+    @contextlib.contextmanager
+    def read_lock(self) -> Iterator[None]:
+        with self.lifecycle_lock():
+            if not self.has_v2_footprint():
+                self.recover_transaction()
+            yield
 
     def recover_transaction(self) -> None:
         if not self.transaction_path.exists():
@@ -467,18 +530,20 @@ def cmd_checkpoint(args: argparse.Namespace, repo: Repo) -> Dict[str, Any]:
     repo.require()
     with repo.lock():
         task, _ = active_task(repo)
-        changed = bool(args.done or args.next or args.validation or args.blocker or args.must_read or args.clear_blockers or args.replace_done)
+        changed = bool(args.done or args.next or args.validation or args.blocker or args.must_read or args.clear_blockers or args.replace_done or args.replace_validation)
         if not changed:
             raise HarnessError("checkpoint 至少需要一个更新字段")
         if args.replace_done and not args.done:
             raise HarnessError("--replace-done 必须同时提供至少一个 --done 摘要")
+        if args.replace_validation and not args.validation:
+            raise HarnessError("--replace-validation 必须同时提供至少一个 --validation 摘要")
         task["revision"] = int(task.get("revision", 1)) + 1
         task["last_work_session"] = session_id()
         incoming_done = bounded(args.done, MAX_DONE, 1000, "done")
         task["done"] = incoming_done if args.replace_done else merge_recent(task.get("done", []), incoming_done, MAX_DONE)
         task["next"] = bounded(args.next, MAX_NEXT, 1000, "next") if args.next else task.get("next", [])
         incoming_validation = bounded(args.validation, MAX_VALIDATION, MAX_TEXT, "validation")
-        task["validation"] = merge_recent(task.get("validation", []), incoming_validation, MAX_VALIDATION)
+        task["validation"] = incoming_validation if args.replace_validation else merge_recent(task.get("validation", []), incoming_validation, MAX_VALIDATION)
         if incoming_validation:
             task["validation_revision"] = task["revision"]
         task["must_read"] = repo.validate_must_read(args.must_read) if args.must_read else task.get("must_read", [])
@@ -780,13 +845,13 @@ def build_capsule(repo: Repo) -> Dict[str, Any]:
 
 def cmd_resume(args: argparse.Namespace, repo: Repo) -> Dict[str, Any]:
     repo.require_handoff()
-    with repo.lock():
+    with repo.read_lock():
         return build_capsule(repo)
 
 
 def cmd_status(args: argparse.Namespace, repo: Repo) -> Dict[str, Any]:
     repo.require_handoff()
-    with repo.lock():
+    with repo.read_lock():
         handoff = repo.read_handoff()
         if handoff.get("mode") == "native":
             task, _ = active_task(repo)
@@ -805,7 +870,7 @@ def cmd_status(args: argparse.Namespace, repo: Repo) -> Dict[str, Any]:
 
 def cmd_doctor(args: argparse.Namespace, repo: Repo) -> Dict[str, Any]:
     repo.require_handoff()
-    with repo.lock():
+    with repo.read_lock():
         issues, warnings = [], []
         if repo.handoff.stat().st_size > HANDOFF_LIMIT:
             issues.append("HANDOFF 超出大小限制")
@@ -888,6 +953,8 @@ def build_parser() -> argparse.ArgumentParser:
     checkpoint.add_argument("--clear-blockers", action="store_true")
     checkpoint.add_argument("--replace-done", action="store_true",
                             help="用本次 --done 有界摘要替换旧完成项；详细历史继续保留在 Fact/Decision/Git")
+    checkpoint.add_argument("--replace-validation", action="store_true",
+                            help="用本次 --validation 有界摘要替换旧验证摘要；详细历史继续保留在 Fact/Git")
 
     fact = sub.add_parser("fact", help="追加可追溯 Fact，或使旧 Fact 失效")
     fact.add_argument("--statement"); fact.add_argument("--source")

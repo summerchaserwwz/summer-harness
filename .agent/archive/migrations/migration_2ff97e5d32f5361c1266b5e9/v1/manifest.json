@@ -1,0 +1,79 @@
+{
+  "schema": "summer.migration-backup/v1",
+  "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+  "project_id": "project_804be50fde6758979800deaa",
+  "source_digest": "2ff97e5d32f5361c1266b5e9890c23a3da6d9bf825edc2c5f1296e333db8a671",
+  "semantic_digest": "6c0a59691586e6661c19d1544600fdbc3d9397f09b826e51319e4e3ca438de52",
+  "files": [
+    {
+      "path": ".agent/HANDOFF.md",
+      "digest": "3abd425cb03bbea1717fb520a2bd45c1f1f0bf60645c1df74e4e2ed57d2be887",
+      "bytes": 2382
+    },
+    {
+      "path": ".agent/harness.json",
+      "digest": "ff6ae50cdc0dbc82703abbb3245407f37b23d19d90cc8b2ae7b9fe24ae858641",
+      "bytes": 182
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T154324246519Z_695a6c.md",
+      "digest": "00792c73ddf34c30c42ebcfc560cf4c12634dd6b0b3cb5da04c0626ce6cd30da",
+      "bytes": 1127
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T154324330691Z_9ae2f1.md",
+      "digest": "f0481d3775cb764b7f2689d6e85c2e8c51f8fc1a7e5077ab65b4114c7e3a1feb",
+      "bytes": 965
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T155642817506Z_dd1119.md",
+      "digest": "9ed29d11fd76c8b5f361cab10ec79a40c3e7b976db87bd56c57c4c977e5e4e06",
+      "bytes": 1302
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T155642873097Z_a90de1.md",
+      "digest": "cd30c1d543b1b40cd416991d41964f58027ffc609eea7572849c9e514bcb2589",
+      "bytes": 1244
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T155642931203Z_50335b.md",
+      "digest": "6ca14f3fb1eb5155bd2bbfd0aa2135a162c6818c8c363d6b064ac8896f93b256",
+      "bytes": 1228
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T155642984151Z_270c08.md",
+      "digest": "6ad9ec15fe251628b697377fff73bad08087ab33d2785ec529a331c28ccb5213",
+      "bytes": 1232
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T155643041650Z_5cd509.md",
+      "digest": "3bdc3956ac39c92a1311e3b7b0c15197ff69a7d10e84fcf2b32513b228491dc7",
+      "bytes": 1136
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T163316647182Z_276157.md",
+      "digest": "d62bfcdfb9717d3214d8e32de13c4eef6c04f5584bf747a5aead3f97f7393796",
+      "bytes": 1361
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T181957774605Z_99e3e6.md",
+      "digest": "f19b2443a9f24bb09536714dea77cd6efcb1d82384cc484b08d1a1c68f364a18",
+      "bytes": 1734
+    },
+    {
+      "path": ".agent/ledger/decisions/dec_20260714T194013800247Z_91829f.md",
+      "digest": "b7dd56ec4de5ac4971167bd2aaeb095da95d7961a691acfc52119483c1f3508e",
+      "bytes": 1479
+    },
+    {
+      "path": ".agent/ledger/facts/task_20260714T154324166611Z_8f7b2c.jsonl",
+      "digest": "4ccd43d656087125a0c7b8a5b91c9b6dd8417767d8f3af8e4a603fc43ed44093",
+      "bytes": 5491
+    },
+    {
+      "path": ".agent/ledger/tasks/task_20260714T154324166611Z_8f7b2c.md",
+      "digest": "03536c3c2e13e420d91be4685105b7c1cee570455a6bcc293a0d891e481b6806",
+      "bytes": 3942
+    }
+  ]
+}

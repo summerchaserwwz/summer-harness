@@ -143,7 +143,7 @@ func headOf(transactions []Transaction) Head {
 		return Head{}
 	}
 	last := transactions[len(transactions)-1]
-	return Head{Revision: last.Revision, Digest: last.Digest}
+	return Head{Revision: last.Revision, Digest: last.Digest, ResumeDigest: last.ResumeDigest}
 }
 
 func cloneDraft(draft Draft) Draft {

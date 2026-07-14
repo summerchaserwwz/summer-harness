@@ -1,12 +1,14 @@
 # Summer Harness Delivery Roadmap
 
-这不是缩减范围的 MVP。每个 milestone 都是最终目标的一部分；排序用于控制风险和保证前一层能够验证后一层。
+完整产品范围保持不变，但每个 milestone 必须由 dogfood、测试和性能证据晋升。GUI、Evolution 和 Host Agent Adapter 按需加载，不进入 Direct 或 Resume 默认启动路径。
+
+当前状态（2026-07-15）：M0 已完成；M1 正在收口 continuity、v1→v2 migration、rollback 与公开文档。后续 milestone 未完成。
 
 ## M0 — Architecture Freeze and Baseline
 
 - 冻结 v1 行为、schema、故障注入测试和性能基线。
 - 建立领域语言、产品规格、ADR 和 v2 架构图。
-- 首次 Git commit，创建公开仓库前完成 secret/license 审查。
+- 已建立 Apache-2.0 仓库、架构基线与 Git 历史；每次公开推送前继续执行 secret/license 审查。
 
 ## M1 — Go Deep Kernel
 
@@ -43,12 +45,13 @@
 - project/user scope Policy；全局变更二次确认。
 - Summer Harness 使用自身 Candidate 流程改进自己的 Policy 和 Skill。
 
-## M6 — Built-in Worker Runner
+## M6 — Host Agent Adapters
 
-- Codex/Claude CLI Adapter。
-- 队列、并发、预算、超时、取消、重试。
-- worktree/branch 创建、恢复、清理和 merge gate。
+- Codex、Claude、GSD 的 capability 与 Actor/Session 映射。
+- Assignment capsule export、Proposal ingest 和 runtime status projection。
+- worktree/branch/base SHA/allowed paths provenance 与 merge gate。
 - Worker 日志与 Evidence 进入受控存储，不直接写 Canonical Ledger。
+- 队列、并发、预算、取消和进程生命周期留给宿主，不复制第二套调度器。
 
 ## M7 — Installation and Desktop
 
@@ -62,7 +65,7 @@
 - Apache-2.0、中文/英文 README、quickstart、architecture、security、contributing。
 - 示例项目、录屏、截图、迁移指南和故障恢复手册。
 - GitHub Actions 覆盖 unit、contract、fault injection、GUI、cross-platform、release smoke。
-- 创建并推送 `summerchaserwwz/summer-harness`。
+- 持续发布 `summerchaserwwz/summer-harness`，使用 Release Gate 决定版本而不是以一次 push 代替发布完成。
 - 形成公众号文章素材：问题、取舍、架构图、性能和 dogfood 案例。
 
 ## Release Gates

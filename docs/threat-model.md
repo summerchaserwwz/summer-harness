@@ -7,7 +7,7 @@
 3. Evidence 与当前代码树、修订和执行环境的绑定。
 4. Worker 不越过 Assignment、代码范围和生命周期权限。
 5. Evolution 不被提示注入、偶然失败或恶意内容永久污染。
-6. GUI、Projection、Plugin 和 Runner 不成为绕过 Kernel 的写路径。
+6. GUI、Projection、Plugin 和 Host Agent Adapter 不成为绕过 Kernel 的写路径。
 7. 开源发布不泄露 secret、完整会话、个人路径或敏感 Artifact。
 
 ## 信任边界
@@ -35,7 +35,7 @@ Local malicious process / OS root  超出本地 Harness 可完全防御范围
 
 风险：攻击者或旧 Session 修改目标、下一步或 must-read，引导新 Session 执行错误内容。
 
-措施：Handoff 由 Canonical Ledger 投影并绑定 ledger head/source digest；Native 模式禁止反向覆盖；must-read 必须 repo-relative、存在、非 symlink；4KiB/5 文件上限；漂移时拒绝恢复并提供 repair。
+措施：Handoff 由 Canonical Ledger 投影并绑定 ledger head/source digest；Native 模式禁止反向覆盖；must-read 必须 repo-relative、存在、非 symlink；4KiB/5 文件上限。同 revision 冲突、倒退或不可证明漂移时拒绝恢复；仅当完整 transaction chain 证明 canonical revision 前进时自动重建过期投影。
 
 ### Fake completion evidence
 
@@ -91,11 +91,11 @@ Local malicious process / OS root  超出本地 Harness 可完全防御范围
 
 措施：默认不扫描、不自动加载 Plugin；manifest、版本和 digest 固定；Plugin 只能产生 Proposal/Gate result/Projection extension；Kernel 重新验证；未来优先进程隔离 JSON-RPC/WASI，而不是直接 import。
 
-### Runner runaway cost or destructive action
+### Host Agent runaway cost or destructive action
 
-风险：内建 Worker 无限重试、消耗预算或执行破坏性命令。
+风险：宿主 Worker 无限重试、消耗预算或执行破坏性命令。
 
-措施：显式并发、预算、超时、重试上限、取消、allowed commands/path policy；破坏性和外部副作用继续由宿主权限系统控制；Runner 终止不影响 Ledger 恢复。
+措施：Summer 只发放有界 Assignment/lease/capability 并校验 Proposal，不自主启动或重试模型进程；并发、预算、超时、取消、破坏性操作和外部副作用由宿主权限系统控制；Worker 终止不影响 Ledger 恢复。
 
 ## Non-goals
 

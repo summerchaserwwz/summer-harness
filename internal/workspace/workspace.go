@@ -112,3 +112,27 @@ func (s *lazyFileStore) Transactions(ctx context.Context, projectID string) ([]l
 	}
 	return store.Transactions(ctx, projectID)
 }
+
+func (s *lazyFileStore) LoadGenesis(ctx context.Context, ref ledger.GenesisRef, migrationID string) (ledger.Transaction, error) {
+	store, err := s.get()
+	if err != nil {
+		return ledger.Transaction{}, err
+	}
+	return store.LoadGenesis(ctx, ref, migrationID)
+}
+
+func (s *lazyFileStore) QuarantineGenesis(ctx context.Context, ref ledger.GenesisRef, migrationID string) error {
+	store, err := s.get()
+	if err != nil {
+		return err
+	}
+	return store.QuarantineGenesis(ctx, ref, migrationID)
+}
+
+func (s *lazyFileStore) CompleteGenesisQuarantine(ctx context.Context, ref ledger.GenesisRef, migrationID string) error {
+	store, err := s.get()
+	if err != nil {
+		return err
+	}
+	return store.CompleteGenesisQuarantine(ctx, ref, migrationID)
+}

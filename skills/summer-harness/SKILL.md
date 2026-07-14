@@ -1,121 +1,59 @@
 ---
 name: summer-harness
-description: Explicitly activated lightweight project workflow with durable Task, Decision, Fact, risk gates, bounded context restore, and one `.agent/HANDOFF.md`. Use only when the user explicitly asks to use Summer Harness or Harness for multi-session, auditable, complex, high-risk, research, or release work. Never auto-activate it for ordinary tasks.
+description: Run an explicitly requested Summer Harness workflow with durable cross-session state, a canonical ledger, bounded restore, migration, and risk-shaped verification. Use only when the user explicitly says “使用 Summer Harness”, “走 Harness”, or invokes `$summer-harness`; never auto-activate it for ordinary work.
 ---
 
 # Summer Harness
 
-Summer Harness is opt-in governance. Ordinary work stays Direct. Once invoked, keep exactly one lifecycle owner and one `.agent/HANDOFF.md`. Preserve semantic project memory, not transcripts.
+Keep exactly one lifecycle owner. Do not repeat the global Direct-first routing decision after this skill is explicitly invoked.
 
-## Route Once
+## Select The Backend Once
 
-Choose one execution engine for the whole active task:
+- Use `native` for a bounded Root Objective that needs durable checkpoints, auditability, or later multi-agent governance. `.agent/ledger/` is canonical.
+- Use `gsd` only for genuinely multi-phase, fresh-context delivery. `.planning/` is canonical and `.agent/HANDOFF.md` is a pointer.
+- Never run Native and GSD ledgers for the same objective.
 
-1. Use `native` for bounded multi-session work that needs durable decisions, facts, evidence, or risk gates.
-2. Use `gsd` for genuinely multi-phase work where fresh-context planning and execution are the main need.
-3. Do not activate this skill merely because a task is difficult. The user's explicit Harness request is required.
+## Run Native V2
 
-When `gsd` is chosen, `.planning/` is canonical. Initialize `.agent/` only to write a pointer Handoff; never duplicate GSD phase state into the Summer ledger.
-
-## Start Native Work
-
-The Go CLI currently owns bounded restore and diagnosis:
+Use the Go CLI as the only Native v2 writer:
 
 ```bash
-summer --repo <root> resume
-summer --repo <root> doctor
+summer start "<observable goal>" [--next "<first action>"]
+summer save --done "<result>" --next "<one action>" --validation "<command and result>" --must-read "<path>"
+summer resume
+summer doctor
 ```
 
-Until native write commands land, resolve the Python shim relative to this `SKILL.md` and use it as the only writer:
+When `--next` is omitted, `start` uses the Goal as the first Next item. Keep Handoff below 4 KiB and `must_read` at five repository files or fewer. Use `--replace-done` and `--replace-validation` to compact checkpoints without deleting canonical history.
+
+An explicit `start` may replace a legacy Direct/Idle Handoff. It must not replace GSD or v1 Native ownership. Exit code `3` means the canonical transaction committed but its Handoff/Snapshot projection needs repair; inspect `committed`, `projection`, and `code` instead of blindly retrying the write.
+
+For a v1 Native project, migrate explicitly:
 
 ```bash
-python3 <skill-dir>/scripts/harnessctl.py init
-python3 <skill-dir>/scripts/harnessctl.py start \
-  --title "<short title>" \
-  --goal "<observable outcome>" \
-  --acceptance "<verifiable condition>" \
-  --profile standard \
-  --risk medium
+summer migrate --dry-run
+summer migrate
+summer resume
+summer doctor
 ```
 
-Profiles:
+Use `summer migrate --rollback` only before any post-migration v2 transaction. Never hand-edit Ledger, HEAD, Snapshot, Handoff, or migration archives.
 
-- `standard`: acceptance criteria plus real validation.
-- `research`: source-backed findings and a reproducible conclusion.
-- `high-risk`: standard gates plus approved review.
-- `release`: high-risk gates plus explicit acknowledgement of residual risks.
+The current v0.1 surface implements Objective start/save, bounded resume, doctor, full v1 import, and crash-recoverable rollback. Decision, Fact, Evidence, Review, completion gates, Worker governance, Evolution, and GUI commands remain later milestones; do not emulate them with the legacy Python writer on a v2 project.
 
-Write only consequential memory:
+## Run GSD Backend
 
-```bash
-python3 <skill-dir>/scripts/harnessctl.py decision --title "..." --question "..." --chosen "..." --source "..."
-python3 <skill-dir>/scripts/harnessctl.py fact --statement "..." --source "file:test-or-URL" --confidence high
-python3 <skill-dir>/scripts/harnessctl.py checkpoint --done "..." --next "..." --validation "..." --must-read "path"
-```
+Let the selected `$gsd-*` workflow own `.planning/`. Use `$project-handoff` to save or restore the single public pointer. GSD pause/resume files are backend internals, not a second public recovery entry. Do not call GSD state-writing workflows while Native owns the lifecycle.
 
-Facts are append-only. Invalidate a stale fact instead of editing it:
+## Cross A Boundary
 
-```bash
-python3 <skill-dir>/scripts/harnessctl.py fact --invalidate fact_ID --reason "what changed"
-```
+Before a new session, phase boundary, long context, or multi-agent dispatch:
 
-## Use GSD as Backend
+1. Save one bounded checkpoint or GSD pointer.
+2. Run `summer doctor`.
+3. On resume, read applicable `AGENTS.md`, `git status`, then `summer resume`.
+4. Open only returned `must_read` files unless diagnosis requires more.
 
-Use GSD only after selecting the GSD engine. Let the appropriate `$gsd-*` skill own `.planning/`, then maintain the single recovery pointer:
+Capability Skills may assist the work but cannot create another lifecycle or widen authorization. Use Matt or gstack only when explicitly selected under the global rules.
 
-```bash
-python3 <skill-dir>/scripts/harnessctl.py handoff \
-  --mode gsd \
-  --goal "<current milestone outcome>" \
-  --next "<one concrete next action>" \
-  --active-artifact ".planning/STATE.md" \
-  --resume-command '$gsd-resume-work'
-```
-
-Never run a parallel native Summer Task for the same GSD task.
-
-## Add Narrow Capabilities
-
-Skills are capabilities, not lifecycle owners. Select the smallest relevant Matt skill directly:
-
-- requirements stress-test: `grilling`, only after the user explicitly asks for one-question-at-a-time interrogation
-- bug root cause: `diagnosing-bugs`
-- architecture or module boundaries: `codebase-design`
-- domain concepts: `domain-modeling`
-- TDD: only when explicitly requested or justified by risk
-- code review: at a review gate or when explicitly requested
-
-Do not route through `ask-matt`; its upstream idea-to-ship flow duplicates the Summer lifecycle. Do not let a capability skill create another state system.
-
-## Resume and Close
-
-For a native Summer task, checkpoint at every session boundary, phase transition, or before context becomes unreliable:
-
-```bash
-python3 <skill-dir>/scripts/harnessctl.py checkpoint --done "..." --next "..." --validation "..."
-summer --repo <root> doctor
-```
-
-If the 4 KiB Handoff is approaching its limit, replace old completion bullets with one bounded summary. Detailed history remains in Fact, Decision, and Git:
-
-```bash
-python3 <skill-dir>/scripts/harnessctl.py checkpoint \
-  --replace-done \
-  --done "<bounded milestone summary>" \
-  --next "<one concrete next action>"
-```
-
-For a GSD task, do not call `checkpoint`. Let GSD update `.planning/`, then refresh the pointer with `handoff --mode gsd ...` and run `doctor`. For Direct work, use `$project-handoff`.
-
-On a new session, read applicable `AGENTS.md` and `git status`, then run `summer --repo <root> resume`. Open no more than the returned `must_read` files. Do not scan the transcript or full ledger unless diagnosis requires it.
-
-For legacy v1 native state, `repair-handoff` rebuilds the projection without advancing the Task revision. Native v2 automatically rebuilds only a missing Handoff from the Canonical Ledger; drift remains fail-closed. For GSD, refresh `handoff --mode gsd` after `.planning/STATE.md` changes.
-
-Complete through the gate; never hand-edit status to `done`:
-
-```bash
-python3 <skill-dir>/scripts/harnessctl.py review --summary "..." --reviewer "<agent-or-session-id>" --approved --independent
-python3 <skill-dir>/scripts/harnessctl.py complete --summary "..." --validation "..."
-```
-
-For the exact router and state invariants, read [references/contract.md](references/contract.md) only when changing the Harness itself or resolving state conflicts.
+Read [references/contract.md](references/contract.md) only when modifying Summer Harness or resolving a lifecycle conflict.

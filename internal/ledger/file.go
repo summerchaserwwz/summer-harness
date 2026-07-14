@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -21,9 +22,10 @@ import (
 var ledgerIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 
 const (
-	ledgerHeadSchema    = "summer.ledger-head/v2"
-	transactionSchema   = "summer.transaction/v2"
-	pendingCommitSchema = "summer.pending-commit/v2"
+	ledgerHeadSchema        = "summer.ledger-head/v2"
+	transactionSchema       = "summer.transaction/v2"
+	pendingCommitSchema     = "summer.pending-commit/v2"
+	rollbackTombstoneSchema = "summer.migration-rollback-started/v1"
 )
 
 const (
@@ -57,6 +59,7 @@ type fileHead struct {
 	TransactionID string `json:"transaction_id"`
 	Revision      uint64 `json:"revision"`
 	Digest        string `json:"digest"`
+	ResumeDigest  string `json:"resume_digest,omitempty"`
 }
 
 type fileManifest struct {
@@ -65,6 +68,7 @@ type fileManifest struct {
 	ProjectID      string          `json:"project_id"`
 	CommandID      string          `json:"command_id"`
 	CommandDigest  string          `json:"command_digest"`
+	ResumeDigest   string          `json:"resume_digest,omitempty"`
 	IdempotencyKey string          `json:"idempotency_key"`
 	CorrelationID  string          `json:"correlation_id"`
 	CausationID    string          `json:"causation_id,omitempty"`
@@ -84,6 +88,19 @@ type pendingCommit struct {
 	Revision       uint64 `json:"revision"`
 	PreviousDigest string `json:"previous_digest"`
 	Digest         string `json:"digest"`
+}
+
+type rollbackJournal struct {
+	Schema      string     `json:"schema"`
+	MigrationID string     `json:"migration_id"`
+	Genesis     GenesisRef `json:"genesis"`
+	Stage       string     `json:"stage"`
+}
+
+type rollbackTombstone struct {
+	Schema      string     `json:"schema"`
+	MigrationID string     `json:"migration_id"`
+	Genesis     GenesisRef `json:"genesis"`
 }
 
 func NewFile(root string) (*File, error) {
@@ -317,7 +334,14 @@ func (f *File) Head(ctx context.Context, projectID string) (_ Head, err error) {
 	if head.ProjectID != projectID {
 		return Head{}, fmt.Errorf("%w: HEAD belongs to project %q, requested %q", ErrProjectConflict, head.ProjectID, projectID)
 	}
-	return Head{Revision: head.Revision, Digest: head.Digest}, nil
+	transaction, err := f.readTransaction(filepath.Join(f.transactions, head.TransactionID))
+	if err != nil {
+		return Head{}, fmt.Errorf("verify HEAD transaction: %w", err)
+	}
+	if transaction.Digest != head.Digest || transaction.Digest != digestTransaction(transaction) || transaction.Revision != head.Revision || transaction.ResumeDigest != head.ResumeDigest {
+		return Head{}, errors.New("HEAD does not match its canonical transaction")
+	}
+	return Head{Revision: head.Revision, Digest: head.Digest, ResumeDigest: head.ResumeDigest}, nil
 }
 
 func (f *File) FindByIdempotency(ctx context.Context, projectID, idempotencyKey string) (_ Transaction, _ bool, err error) {
@@ -405,6 +429,7 @@ func (f *File) Commit(ctx context.Context, draft Draft, expectedRevision uint64)
 		TransactionID: transaction.TransactionID,
 		Revision:      transaction.Revision,
 		Digest:        transaction.Digest,
+		ResumeDigest:  transaction.ResumeDigest,
 	}); err != nil {
 		return Transaction{}, err
 	}
@@ -424,6 +449,328 @@ func (f *File) Transactions(ctx context.Context, projectID string) (_ []Transact
 	defer finishUnlock(unlock, &err)
 	transactions, _, err := f.readAll(ctx, projectID)
 	return transactions, err
+}
+
+func (f *File) LoadGenesis(ctx context.Context, ref GenesisRef, migrationID string) (_ Transaction, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := validateGenesisRef(ref, migrationID); err != nil {
+		return Transaction{}, err
+	}
+	unlock, err := f.acquireLedgerLock(ctx, false)
+	if err != nil {
+		return Transaction{}, err
+	}
+	defer finishUnlock(unlock, &err)
+
+	journalPath := filepath.Join(f.runtime, "migration.rollback.json")
+	journal, journalFound, err := readRollbackJournal(journalPath)
+	if err != nil {
+		return Transaction{}, err
+	}
+	if journalFound && (journal.Schema != "summer.migration-rollback/v1" || journal.MigrationID != migrationID || journal.Genesis != ref) {
+		return Transaction{}, errors.New("rollback journal belongs to another genesis migration")
+	}
+	if !journalFound {
+		transactions, head, readErr := f.readAll(ctx, ref.ProjectID)
+		if readErr != nil {
+			return Transaction{}, readErr
+		}
+		if len(transactions) != 1 || transactions[0].Revision != 1 || transactions[0].TransactionID != ref.TransactionID || transactions[0].Digest != ref.Digest || head.Revision != 1 || head.TransactionID != ref.TransactionID || head.Digest != ref.Digest {
+			return Transaction{}, errors.New("rollback is allowed only for the unchanged migration genesis")
+		}
+		return cloneTransaction(transactions[0]), nil
+	}
+
+	live := filepath.Join(f.transactions, ref.TransactionID)
+	archived := filepath.Join(filepath.Dir(f.root), "archive", "migrations", migrationID, "rollback", "v2", "transactions", ref.TransactionID)
+	liveInfo, liveErr := os.Lstat(live)
+	archivedInfo, archivedErr := os.Lstat(archived)
+	var path string
+	switch {
+	case liveErr == nil && errors.Is(archivedErr, os.ErrNotExist):
+		if !liveInfo.IsDir() || liveInfo.Mode()&os.ModeSymlink != 0 {
+			return Transaction{}, errors.New("live migration genesis is unsafe")
+		}
+		path = live
+	case errors.Is(liveErr, os.ErrNotExist) && archivedErr == nil:
+		if !archivedInfo.IsDir() || archivedInfo.Mode()&os.ModeSymlink != 0 {
+			return Transaction{}, errors.New("quarantined migration genesis is unsafe")
+		}
+		path = archived
+	case liveErr == nil && archivedErr == nil:
+		return Transaction{}, errors.New("migration genesis exists in both live and quarantine paths")
+	default:
+		return Transaction{}, errors.New("migration genesis is missing from live and quarantine paths")
+	}
+	transaction, err := f.readTransaction(path)
+	if err != nil || transaction.ProjectID != ref.ProjectID || transaction.TransactionID != ref.TransactionID || transaction.Revision != 1 || transaction.Digest != ref.Digest {
+		return Transaction{}, errors.New("migration genesis does not match the rollback journal")
+	}
+	return cloneTransaction(transaction), nil
+}
+
+func (f *File) QuarantineGenesis(ctx context.Context, ref GenesisRef, migrationID string) (err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := validateGenesisRef(ref, migrationID); err != nil {
+		return err
+	}
+	unlock, err := f.acquireLedgerLock(ctx, true)
+	if err != nil {
+		return err
+	}
+	defer finishUnlock(unlock, &err)
+	journalPath := filepath.Join(f.runtime, "migration.rollback.json")
+	journal, found, err := readRollbackJournal(journalPath)
+	if err != nil {
+		return err
+	}
+	if found {
+		if journal.Schema != "summer.migration-rollback/v1" || journal.MigrationID != migrationID || journal.Genesis != ref {
+			return errors.New("rollback journal belongs to another genesis migration")
+		}
+	} else {
+		transactions, head, readErr := f.readAll(ctx, ref.ProjectID)
+		if readErr != nil {
+			return readErr
+		}
+		if len(transactions) != 1 || transactions[0].Revision != 1 || transactions[0].TransactionID != ref.TransactionID || transactions[0].Digest != ref.Digest || head.Revision != 1 || head.TransactionID != ref.TransactionID || head.Digest != ref.Digest {
+			return errors.New("rollback is allowed only for the unchanged migration genesis")
+		}
+		if _, pending, pendingErr := f.readPendingCommit(); pendingErr != nil {
+			return pendingErr
+		} else if pending {
+			return errors.New("rollback is not allowed while a commit recovery marker exists")
+		}
+		journal = rollbackJournal{Schema: "summer.migration-rollback/v1", MigrationID: migrationID, Genesis: ref, Stage: "prepared"}
+	}
+
+	archive := filepath.Join(filepath.Dir(f.root), "archive", "migrations", migrationID, "rollback", "v2")
+	if err := makeRegularDirectories(filepath.Join(archive, "transactions"), 0o700); err != nil {
+		return err
+	}
+	tombstonePath := filepath.Join(filepath.Dir(archive), "started.json")
+	if err := ensureRollbackTombstone(tombstonePath, migrationID, ref); err != nil {
+		return err
+	}
+	if !found {
+		if err := writeAtomicJSONFile(journalPath, journal, 0o600); err != nil {
+			return err
+		}
+	}
+	transactionSource := filepath.Join(f.transactions, ref.TransactionID)
+	transactionTarget := filepath.Join(archive, "transactions", ref.TransactionID)
+	if journal.Stage == "prepared" {
+		if err := moveTransactionForRollback(f, transactionSource, transactionTarget, ref); err != nil {
+			return err
+		}
+		journal.Stage = "transaction_quarantined"
+		if err := writeAtomicJSONFile(journalPath, journal, 0o600); err != nil {
+			return err
+		}
+	} else if err := moveTransactionForRollback(f, transactionSource, transactionTarget, ref); err != nil {
+		return err
+	}
+	if journal.Stage == "transaction_quarantined" {
+		headTarget := filepath.Join(archive, "HEAD")
+		if err := moveHeadForRollback(f, f.headPath, headTarget, ref); err != nil {
+			return err
+		}
+		journal.Stage = "ledger_quarantined"
+		if err := writeAtomicJSONFile(journalPath, journal, 0o600); err != nil {
+			return err
+		}
+	} else if journal.Stage == "ledger_quarantined" || journal.Stage == "complete" {
+		if err := moveHeadForRollback(f, f.headPath, filepath.Join(archive, "HEAD"), ref); err != nil {
+			return err
+		}
+	}
+	if journal.Stage != "ledger_quarantined" && journal.Stage != "complete" {
+		return fmt.Errorf("unsupported rollback journal stage %q", journal.Stage)
+	}
+	return nil
+}
+
+func (f *File) CompleteGenesisQuarantine(ctx context.Context, ref GenesisRef, migrationID string) (err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	unlock, err := f.acquireLedgerLock(ctx, true)
+	if err != nil {
+		return err
+	}
+	defer finishUnlock(unlock, &err)
+	journalPath := filepath.Join(f.runtime, "migration.rollback.json")
+	journal, found, err := readRollbackJournal(journalPath)
+	if err != nil {
+		return err
+	}
+	if !found || journal.MigrationID != migrationID || journal.Genesis != ref || (journal.Stage != "ledger_quarantined" && journal.Stage != "complete") {
+		return errors.New("rollback journal is not ready to complete")
+	}
+	archive := filepath.Join(filepath.Dir(f.root), "archive", "migrations", migrationID, "rollback", "v2")
+	if err := moveTransactionForRollback(f, filepath.Join(f.transactions, ref.TransactionID), filepath.Join(archive, "transactions", ref.TransactionID), ref); err != nil {
+		return err
+	}
+	if err := moveHeadForRollback(f, f.headPath, filepath.Join(archive, "HEAD"), ref); err != nil {
+		return err
+	}
+	journal.Stage = "complete"
+	return writeAtomicJSONFile(journalPath, journal, 0o600)
+}
+
+func validateGenesisRef(ref GenesisRef, migrationID string) error {
+	if strings.TrimSpace(ref.ProjectID) == "" || !ledgerIDPattern.MatchString(ref.TransactionID) || strings.TrimSpace(ref.Digest) == "" || !ledgerIDPattern.MatchString(migrationID) {
+		return errors.New("rollback genesis reference is invalid")
+	}
+	return nil
+}
+
+func readRollbackJournal(path string) (rollbackJournal, bool, error) {
+	raw, err := readRegularFile(path, maxHeadBytes)
+	if errors.Is(err, os.ErrNotExist) {
+		return rollbackJournal{}, false, nil
+	}
+	if err != nil {
+		return rollbackJournal{}, false, err
+	}
+	var journal rollbackJournal
+	if err := decodeStrictJSON(raw, &journal); err != nil {
+		return rollbackJournal{}, false, err
+	}
+	return journal, true, nil
+}
+
+func ensureRollbackTombstone(path, migrationID string, ref GenesisRef) error {
+	raw, err := readRegularFile(path, maxHeadBytes)
+	if errors.Is(err, os.ErrNotExist) {
+		return writeAtomicJSONFile(path, rollbackTombstone{
+			Schema: rollbackTombstoneSchema, MigrationID: migrationID, Genesis: ref,
+		}, 0o600)
+	}
+	if err != nil {
+		return err
+	}
+	var tombstone rollbackTombstone
+	if err := decodeStrictJSON(raw, &tombstone); err != nil {
+		return err
+	}
+	if tombstone.Schema != rollbackTombstoneSchema || tombstone.MigrationID != migrationID || tombstone.Genesis != ref {
+		return errors.New("rollback tombstone belongs to another genesis migration")
+	}
+	return nil
+}
+
+func moveTransactionForRollback(f *File, source, target string, ref GenesisRef) error {
+	sourceInfo, sourceErr := os.Lstat(source)
+	targetInfo, targetErr := os.Lstat(target)
+	switch {
+	case sourceErr == nil && targetErr == nil:
+		return errors.New("rollback transaction exists in both live and quarantine paths")
+	case sourceErr == nil:
+		if !sourceInfo.IsDir() || sourceInfo.Mode()&os.ModeSymlink != 0 || !errors.Is(targetErr, os.ErrNotExist) {
+			return errors.New("rollback transaction source or target is unsafe")
+		}
+		transaction, err := f.readTransaction(source)
+		if err != nil || transaction.Revision != 1 || transaction.ProjectID != ref.ProjectID || transaction.TransactionID != ref.TransactionID || transaction.Digest != ref.Digest {
+			return errors.New("rollback transaction does not match the migration genesis")
+		}
+		if err := os.Rename(source, target); err != nil {
+			return fmt.Errorf("quarantine migration transaction: %w", err)
+		}
+		if err := fsyncDirectory(filepath.Dir(source)); err != nil {
+			return err
+		}
+		return fsyncDirectory(filepath.Dir(target))
+	case errors.Is(sourceErr, os.ErrNotExist) && targetErr == nil:
+		if !targetInfo.IsDir() || targetInfo.Mode()&os.ModeSymlink != 0 {
+			return errors.New("quarantined transaction is unsafe")
+		}
+		transaction, err := f.readTransaction(target)
+		if err != nil || transaction.Revision != 1 || transaction.ProjectID != ref.ProjectID || transaction.TransactionID != ref.TransactionID || transaction.Digest != ref.Digest {
+			return errors.New("quarantined transaction does not match the migration genesis")
+		}
+		return nil
+	default:
+		return errors.New("migration transaction is missing from live and quarantine paths")
+	}
+}
+
+func moveHeadForRollback(f *File, source, target string, ref GenesisRef) error {
+	sourceInfo, sourceErr := os.Lstat(source)
+	targetInfo, targetErr := os.Lstat(target)
+	validate := func(path string) error {
+		raw, err := readRegularFile(path, maxHeadBytes)
+		if err != nil {
+			return err
+		}
+		var head fileHead
+		if err := decodeStrictJSON(raw, &head); err != nil {
+			return err
+		}
+		if head.ProjectID != ref.ProjectID || head.TransactionID != ref.TransactionID || head.Revision != 1 || head.Digest != ref.Digest {
+			return errors.New("HEAD does not match the migration genesis")
+		}
+		return nil
+	}
+	switch {
+	case sourceErr == nil && targetErr == nil:
+		return errors.New("rollback HEAD exists in both live and quarantine paths")
+	case sourceErr == nil:
+		if !sourceInfo.Mode().IsRegular() || sourceInfo.Mode()&os.ModeSymlink != 0 || !errors.Is(targetErr, os.ErrNotExist) {
+			return errors.New("rollback HEAD source or target is unsafe")
+		}
+		if err := validate(source); err != nil {
+			return err
+		}
+		if err := os.Rename(source, target); err != nil {
+			return fmt.Errorf("quarantine migration HEAD: %w", err)
+		}
+		if err := fsyncDirectory(filepath.Dir(source)); err != nil {
+			return err
+		}
+		return fsyncDirectory(filepath.Dir(target))
+	case errors.Is(sourceErr, os.ErrNotExist) && targetErr == nil:
+		if !targetInfo.Mode().IsRegular() || targetInfo.Mode()&os.ModeSymlink != 0 {
+			return errors.New("quarantined HEAD is unsafe")
+		}
+		return validate(target)
+	default:
+		return errors.New("migration HEAD is missing from live and quarantine paths")
+	}
+}
+
+func makeRegularDirectories(path string, mode os.FileMode) error {
+	missing := make([]string, 0)
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+				return fmt.Errorf("rollback archive path is not a regular directory: %s", current)
+			}
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		missing = append(missing, current)
+	}
+	for index := len(missing) - 1; index >= 0; index-- {
+		if err := os.Mkdir(missing[index], mode); err != nil && !errors.Is(err, os.ErrExist) {
+			return err
+		}
+		info, err := os.Lstat(missing[index])
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("rollback archive path is not a regular directory: %s", missing[index])
+		}
+		if err := fsyncDirectory(filepath.Dir(missing[index])); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func finishUnlock(unlock func() error, err *error) {
@@ -626,7 +973,7 @@ func (f *File) readAll(ctx context.Context, projectID string) ([]Transaction, fi
 		}
 	}
 	last := chain[len(chain)-1]
-	if head.Revision != last.Revision || head.Digest != last.Digest || head.TransactionID != last.TransactionID {
+	if head.Revision != last.Revision || head.Digest != last.Digest || head.TransactionID != last.TransactionID || head.ResumeDigest != last.ResumeDigest {
 		if err := fsyncDirectory(f.transactions); err != nil {
 			return nil, fileHead{}, fmt.Errorf("sync orphan transaction directory before adoption: %w", err)
 		}
@@ -636,6 +983,7 @@ func (f *File) readAll(ctx context.Context, projectID string) ([]Transaction, fi
 			TransactionID: last.TransactionID,
 			Revision:      last.Revision,
 			Digest:        last.Digest,
+			ResumeDigest:  last.ResumeDigest,
 		}
 		if err := f.writeHead(head); err != nil {
 			return nil, fileHead{}, fmt.Errorf("adopt orphan transaction: %w", err)
@@ -665,13 +1013,19 @@ func (pending pendingCommit) matches(transaction Transaction) bool {
 }
 
 func isZeroHead(head fileHead) bool {
-	return head.Schema == "" && head.ProjectID == "" && head.TransactionID == "" && head.Revision == 0 && head.Digest == ""
+	return head.Schema == "" && head.ProjectID == "" && head.TransactionID == "" && head.Revision == 0 && head.Digest == "" && head.ResumeDigest == ""
 }
 
 func validateFileHead(head fileHead) error {
 	if head.Schema != ledgerHeadSchema || strings.TrimSpace(head.ProjectID) == "" ||
 		!ledgerIDPattern.MatchString(head.TransactionID) || head.Revision == 0 || strings.TrimSpace(head.Digest) == "" {
 		return errors.New("HEAD is incomplete")
+	}
+	if head.ResumeDigest != "" {
+		decoded, err := hex.DecodeString(head.ResumeDigest)
+		if err != nil || len(decoded) != sha256.Size {
+			return errors.New("HEAD resume digest is invalid")
+		}
 	}
 	return nil
 }
@@ -786,6 +1140,7 @@ func (f *File) readTransaction(directory string) (Transaction, error) {
 			ProjectID:      manifest.ProjectID,
 			CommandID:      manifest.CommandID,
 			CommandDigest:  manifest.CommandDigest,
+			ResumeDigest:   manifest.ResumeDigest,
 			IdempotencyKey: manifest.IdempotencyKey,
 			CorrelationID:  manifest.CorrelationID,
 			CausationID:    manifest.CausationID,
@@ -948,6 +1303,7 @@ func (f *File) writeTransaction(transaction Transaction) error {
 		ProjectID:      transaction.ProjectID,
 		CommandID:      transaction.CommandID,
 		CommandDigest:  transaction.CommandDigest,
+		ResumeDigest:   transaction.ResumeDigest,
 		IdempotencyKey: transaction.IdempotencyKey,
 		CorrelationID:  transaction.CorrelationID,
 		CausationID:    transaction.CausationID,

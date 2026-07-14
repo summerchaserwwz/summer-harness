@@ -61,7 +61,12 @@ type ActorRef struct {
 
 type CommandKind string
 
-const CommandStartObjective CommandKind = "StartObjective"
+const (
+	CommandStartObjective          CommandKind = "StartObjective"
+	CommandSaveObjective           CommandKind = "SaveObjective"
+	CommandImportLegacyNative      CommandKind = "ImportLegacyNative"
+	CommandRollbackLegacyMigration CommandKind = "RollbackLegacyMigration"
+)
 
 type CommandEnvelope struct {
 	Schema           string          `json:"schema"`
@@ -81,22 +86,60 @@ type StartObjective struct {
 	Title      string   `json:"title"`
 	Goal       string   `json:"goal"`
 	Acceptance []string `json:"acceptance"`
+	Next       []string `json:"next,omitempty"`
 	Profile    string   `json:"profile"`
+}
+
+type SaveObjective struct {
+	ObjectiveID               string    `json:"objective_id"`
+	ExpectedObjectiveRevision uint64    `json:"expected_objective_revision"`
+	Done                      []string  `json:"done,omitempty"`
+	ReplaceDone               bool      `json:"replace_done,omitempty"`
+	Next                      *[]string `json:"next,omitempty"`
+	Validation                []string  `json:"validation,omitempty"`
+	ReplaceValidation         bool      `json:"replace_validation,omitempty"`
+	Blockers                  *[]string `json:"blockers,omitempty"`
+	MustRead                  *[]string `json:"must_read,omitempty"`
+}
+
+type ImportLegacyNative struct {
+	MigrationID          string `json:"migration_id"`
+	SourceDigest         string `json:"source_digest"`
+	BackupManifestDigest string `json:"backup_manifest_digest"`
+}
+
+type RollbackLegacyMigration struct {
+	MigrationID           string `json:"migration_id"`
+	ExpectedTransactionID string `json:"expected_transaction_id"`
+	ExpectedLedgerHead    string `json:"expected_ledger_head"`
 }
 
 type ObjectiveStatus string
 
-const ObjectiveActive ObjectiveStatus = "active"
+const (
+	ObjectiveActive    ObjectiveStatus = "active"
+	ObjectiveBlocked   ObjectiveStatus = "blocked"
+	ObjectiveReview    ObjectiveStatus = "review"
+	ObjectiveCompleted ObjectiveStatus = "completed"
+	ObjectiveCancelled ObjectiveStatus = "cancelled"
+)
 
 type Objective struct {
-	ObjectiveID string          `json:"objective_id"`
-	ProjectID   string          `json:"project_id"`
-	Title       string          `json:"title"`
-	Goal        string          `json:"goal"`
-	Acceptance  []string        `json:"acceptance"`
-	Profile     string          `json:"profile"`
-	Status      ObjectiveStatus `json:"status"`
-	Revision    uint64          `json:"revision"`
+	ObjectiveID   string          `json:"objective_id"`
+	ProjectID     string          `json:"project_id"`
+	Title         string          `json:"title"`
+	Goal          string          `json:"goal"`
+	Acceptance    []string        `json:"acceptance"`
+	Profile       string          `json:"profile"`
+	Risk          string          `json:"risk,omitempty"`
+	Status        ObjectiveStatus `json:"status"`
+	Revision      uint64          `json:"revision"`
+	Done          []string        `json:"done"`
+	Next          []string        `json:"next"`
+	Validation    []string        `json:"validation"`
+	Blockers      []string        `json:"blockers"`
+	MustRead      []string        `json:"must_read"`
+	ResidualRisks []string        `json:"residual_risks,omitempty"`
 }
 
 type Rejection struct {
@@ -109,6 +152,8 @@ type Receipt struct {
 	TransactionID   string             `json:"transaction_id,omitempty"`
 	NewRevision     uint64             `json:"new_revision,omitempty"`
 	EntityID        string             `json:"entity_id,omitempty"`
+	EntityRevision  uint64             `json:"entity_revision,omitempty"`
+	EntityStatus    string             `json:"entity_status,omitempty"`
 	EmittedEventIDs []string           `json:"emitted_event_ids"`
 	Rejection       *Rejection         `json:"rejection,omitempty"`
 	Projection      *ProjectionReceipt `json:"projection,omitempty"`
@@ -129,8 +174,10 @@ type ProjectionReceipt struct {
 type QueryKind string
 
 const (
-	QueryObjective QueryKind = "Objective"
-	QueryResume    QueryKind = "Resume"
+	QueryObjective       QueryKind = "Objective"
+	QueryResume          QueryKind = "Resume"
+	QueryLegacyMigration QueryKind = "LegacyMigration"
+	QueryLegacyRollback  QueryKind = "LegacyRollback"
 )
 
 type Query struct {
@@ -158,6 +205,24 @@ type ResumeView struct {
 func (ResumeView) QueryKind() QueryKind { return QueryResume }
 func (ResumeView) isView()              {}
 
+type LegacyMigrationView struct {
+	Migration      continuity.LegacyMigration `json:"migration"`
+	Committed      bool                       `json:"committed"`
+	SwitchPending  bool                       `json:"switch_pending,omitempty"`
+	LedgerRevision uint64                     `json:"ledger_revision,omitempty"`
+	TransactionID  string                     `json:"transaction_id,omitempty"`
+}
+
+func (LegacyMigrationView) QueryKind() QueryKind { return QueryLegacyMigration }
+func (LegacyMigrationView) isView()              {}
+
+type LegacyRollbackView struct {
+	Rollback continuity.LegacyRollback `json:"rollback"`
+}
+
+func (LegacyRollbackView) QueryKind() QueryKind { return QueryLegacyRollback }
+func (LegacyRollbackView) isView()              {}
+
 type Engine interface {
 	Apply(ctx context.Context, command CommandEnvelope) (Receipt, error)
 	Query(ctx context.Context, query Query) (View, error)
@@ -182,7 +247,7 @@ func New(store ledger.Store, options ...Option) Engine {
 	return kernel
 }
 
-func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, error) {
+func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (receipt Receipt, err error) {
 	if rejection := validateEnvelope(command); rejection != nil {
 		return Receipt{Accepted: false, Rejection: rejection}, nil
 	}
@@ -199,17 +264,42 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 			Message: err.Error(),
 		}}, nil
 	}
+	if k.continuity != nil {
+		unlock, lockErr := k.continuity.LockLifecycle(ctx)
+		if lockErr != nil {
+			return Receipt{}, lockErr
+		}
+		defer func() { err = errors.Join(err, unlock()) }()
+	}
+	if command.Kind == CommandRollbackLegacyMigration {
+		return k.applyLegacyRollback(ctx, command)
+	}
+	canonicalProject, canonicalFound, err := k.store.Project(ctx)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if canonicalFound && canonicalProject != command.ProjectID {
+		return Receipt{Accepted: false, Rejection: &Rejection{Code: "PROJECT_CONFLICT", Message: "canonical ledger belongs to another project"}}, nil
+	}
+	if command.Kind == CommandImportLegacyNative {
+		return k.applyLegacyMigration(ctx, command, digest, canonicalFound)
+	}
 	if receipt, found, err := k.findIdempotentReceipt(ctx, command, digest); err != nil {
 		return Receipt{}, err
 	} else if found {
 		return receipt, nil
 	}
-	if command.Kind == CommandStartObjective && k.continuity != nil {
-		if err := k.continuity.PreflightLifecycle(ctx, command.ProjectID); err != nil {
+	if (command.Kind == CommandStartObjective || command.Kind == CommandSaveObjective) && k.continuity != nil {
+		if err := k.continuity.PreflightLifecycle(ctx, command.ProjectID, canonicalFound); err != nil {
 			return projectionPreflightRejection(err), nil
 		}
+		if command.Kind == CommandSaveObjective {
+			if _, err := k.continuity.Resume(ctx, continuitySource{store: k.store}); err != nil {
+				return projectionPreflightRejection(err), nil
+			}
+		}
 	}
-	if command.Kind != CommandStartObjective {
+	if command.Kind != CommandStartObjective && command.Kind != CommandSaveObjective {
 		return Receipt{Accepted: false, Rejection: &Rejection{
 			Code:    "UNSUPPORTED_COMMAND",
 			Message: fmt.Sprintf("unsupported command kind %q", command.Kind),
@@ -218,28 +308,7 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 	if command.Actor.Role != ActorUser && command.Actor.Role != ActorCoordinator {
 		return Receipt{Accepted: false, Rejection: &Rejection{
 			Code:    "FORBIDDEN",
-			Message: "only a user or coordinator can start the root objective",
-		}}, nil
-	}
-
-	var start StartObjective
-	if err := json.Unmarshal(command.Payload, &start); err != nil {
-		return Receipt{Accepted: false, Rejection: &Rejection{
-			Code:    "INVALID_COMMAND",
-			Message: fmt.Sprintf("decode StartObjective: %v", err),
-		}}, nil
-	}
-	if err := validateStartObjective(start); err != nil {
-		return Receipt{Accepted: false, Rejection: &Rejection{
-			Code:    "INVALID_COMMAND",
-			Message: err.Error(),
-		}}, nil
-	}
-	secretInputs := append([]string{start.Title, start.Goal, start.Profile}, start.Acceptance...)
-	if containsHighConfidenceSecret(secretInputs...) {
-		return Receipt{Accepted: false, Rejection: &Rejection{
-			Code:    "SENSITIVE_CONTENT",
-			Message: "objective contains a high-confidence secret pattern and was not written",
+			Message: "only a user or coordinator can update the root objective",
 		}}, nil
 	}
 	transactions, err := k.store.Transactions(ctx, command.ProjectID)
@@ -261,47 +330,86 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 			Message: "expected revision does not match the state used for validation",
 		}}, nil
 	}
-	for _, transaction := range transactions {
-		for _, event := range transaction.Events {
-			if event.Kind == "ObjectiveStarted" {
-				if receipt, found, err := k.findIdempotentReceipt(ctx, command, digest); err != nil {
-					return Receipt{}, err
-				} else if found {
-					return receipt, nil
-				}
-				return Receipt{Accepted: false, Rejection: &Rejection{
-					Code:    "OBJECTIVE_EXISTS",
-					Message: "project already has a root objective",
-				}}, nil
-			}
-		}
-	}
-
-	objectiveID, err := newID("obj")
+	state, err := foldObjectives(transactions)
 	if err != nil {
 		return Receipt{}, err
 	}
-	objective := Objective{
-		ObjectiveID: objectiveID,
-		ProjectID:   command.ProjectID,
-		Title:       strings.TrimSpace(start.Title),
-		Goal:        strings.TrimSpace(start.Goal),
-		Acceptance:  cleanStrings(start.Acceptance),
-		Profile:     strings.TrimSpace(start.Profile),
-		Status:      ObjectiveActive,
-		Revision:    1,
+	var objective Objective
+	var eventKind string
+	switch command.Kind {
+	case CommandStartObjective:
+		if state.activeID != "" {
+			return Receipt{Accepted: false, Rejection: &Rejection{
+				Code: "OBJECTIVE_EXISTS", Message: "project already has an active root objective",
+			}}, nil
+		}
+		var start StartObjective
+		if err := json.Unmarshal(command.Payload, &start); err != nil {
+			return invalidCommandReceipt(fmt.Sprintf("decode StartObjective: %v", err)), nil
+		}
+		defaultStartObjective(&start)
+		if err := validateStartObjective(start); err != nil {
+			return invalidCommandReceipt(err.Error()), nil
+		}
+		secretInputs := append([]string{start.Title, start.Goal, start.Profile}, start.Acceptance...)
+		secretInputs = append(secretInputs, start.Next...)
+		if containsHighConfidenceSecret(secretInputs...) {
+			return Receipt{Accepted: false, Rejection: &Rejection{Code: "SENSITIVE_CONTENT", Message: "objective contains a high-confidence secret pattern and was not written"}}, nil
+		}
+		objectiveID, idErr := newID("obj")
+		if idErr != nil {
+			return Receipt{}, idErr
+		}
+		objective = Objective{
+			ObjectiveID: objectiveID, ProjectID: command.ProjectID,
+			Title: strings.TrimSpace(start.Title), Goal: strings.TrimSpace(start.Goal),
+			Acceptance: cleanStrings(start.Acceptance), Profile: strings.TrimSpace(start.Profile),
+			Status: ObjectiveActive, Revision: 1,
+			Done: []string{}, Next: cleanStrings(start.Next), Validation: []string{}, Blockers: []string{}, MustRead: []string{},
+		}
+		eventKind = "ObjectiveStarted"
+	case CommandSaveObjective:
+		var save SaveObjective
+		if err := json.Unmarshal(command.Payload, &save); err != nil {
+			return invalidCommandReceipt(fmt.Sprintf("decode SaveObjective: %v", err)), nil
+		}
+		if err := validateSaveObjective(save); err != nil {
+			return invalidCommandReceipt(err.Error()), nil
+		}
+		secretInputs := append(append(append([]string{save.ObjectiveID}, save.Done...), save.Validation...), valuesFromPointers(save.Next, save.Blockers, save.MustRead)...)
+		if containsHighConfidenceSecret(secretInputs...) {
+			return Receipt{Accepted: false, Rejection: &Rejection{Code: "SENSITIVE_CONTENT", Message: "checkpoint contains a high-confidence secret pattern and was not written"}}, nil
+		}
+		if state.activeID == "" {
+			return Receipt{Accepted: false, Rejection: &Rejection{Code: "NO_ACTIVE_OBJECTIVE", Message: "project has no active root objective"}}, nil
+		}
+		if state.activeID != save.ObjectiveID {
+			return Receipt{Accepted: false, Rejection: &Rejection{Code: "OBJECTIVE_NOT_CURRENT", Message: "save targets a root objective that is not current"}}, nil
+		}
+		current := state.objectives[state.activeID]
+		if current.Revision != save.ExpectedObjectiveRevision {
+			return Receipt{Accepted: false, Rejection: &Rejection{Code: "OBJECTIVE_REVISION_CONFLICT", Message: "expected objective revision does not match current state"}}, nil
+		}
+		objective, err = applyCheckpoint(current, save)
+		if err != nil {
+			return invalidCommandReceipt(err.Error()), nil
+		}
+		eventKind = "ObjectiveSaved"
 	}
 	if k.continuity != nil {
-		preflightState := continuity.State{
-			ProjectID: command.ProjectID, ObjectiveID: objective.ObjectiveID,
-			ObjectiveStatus: string(objective.Status), ObjectiveRevision: objective.Revision,
-			Goal: objective.Goal, Profile: objective.Profile, Acceptance: objective.Acceptance,
-			BuiltAt: time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.UTC), ResumeCommand: "summer resume",
+		preflightState := continuityState(objective, time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.UTC))
+		resumeDigest, digestErr := continuity.CanonicalResumeDigest(preflightState)
+		if digestErr != nil {
+			return Receipt{}, fmt.Errorf("digest continuity state: %w", digestErr)
 		}
-		preflightCursor := continuity.Cursor{Revision: command.ExpectedRevision + 1, Digest: strings.Repeat("0", sha256.Size*2)}
+		preflightCursor := continuity.Cursor{Revision: command.ExpectedRevision + 1, Digest: strings.Repeat("0", sha256.Size*2), ResumeDigest: resumeDigest}
 		if err := k.continuity.PreflightStart(ctx, preflightState, preflightCursor); err != nil {
 			return projectionPreflightRejection(err), nil
 		}
+	}
+	resumeDigest, err := continuity.CanonicalResumeDigest(continuityState(objective, time.Time{}))
+	if err != nil {
+		return Receipt{}, fmt.Errorf("digest continuity state: %w", err)
 	}
 	data, err := json.Marshal(objective)
 	if err != nil {
@@ -324,6 +432,7 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 		ProjectID:      command.ProjectID,
 		CommandID:      command.CommandID,
 		CommandDigest:  digest,
+		ResumeDigest:   resumeDigest,
 		IdempotencyKey: command.IdempotencyKey,
 		CorrelationID:  command.CorrelationID,
 		CausationID:    command.CausationID,
@@ -331,8 +440,8 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 		Actor:          actor,
 		Events: []ledger.Event{{
 			EventID:  eventID,
-			Kind:     "ObjectiveStarted",
-			EntityID: objectiveID,
+			Kind:     eventKind,
+			EntityID: objective.ObjectiveID,
 			Data:     data,
 		}},
 	}, command.ExpectedRevision)
@@ -357,6 +466,10 @@ func (k *kernel) Apply(ctx context.Context, command CommandEnvelope) (Receipt, e
 		return Receipt{}, err
 	}
 	return k.receiptWithProjection(ctx, transaction), nil
+}
+
+func invalidCommandReceipt(message string) Receipt {
+	return Receipt{Accepted: false, Rejection: &Rejection{Code: "INVALID_COMMAND", Message: message}}
 }
 
 func projectionPreflightRejection(err error) Receipt {
@@ -386,28 +499,15 @@ func (k *kernel) receiptWithProjection(ctx context.Context, transaction ledger.T
 	if k.continuity == nil {
 		return receipt
 	}
-	var objective Objective
-	found := false
-	for _, event := range transaction.Events {
-		if event.Kind != "ObjectiveStarted" {
-			continue
+	source := continuitySource{store: k.store}
+	state, cursor, err := source.Snapshot(ctx, transaction.ProjectID)
+	if err != nil {
+		code := continuity.ErrorCode(err)
+		if code == "" {
+			code = continuity.CodeProjectionConflict
 		}
-		if err := json.Unmarshal(event.Data, &objective); err != nil {
-			receipt.Projection = &ProjectionReceipt{Status: ProjectionRepairRequired, Code: "HANDOFF_INVALID"}
-			return receipt
-		}
-		found = true
-		break
-	}
-	if !found {
+		receipt.Projection = &ProjectionReceipt{Status: ProjectionRepairRequired, Code: string(code)}
 		return receipt
-	}
-	cursor := continuity.Cursor{Revision: transaction.Revision, Digest: transaction.Digest}
-	state := continuity.State{
-		ProjectID: transaction.ProjectID, ObjectiveID: objective.ObjectiveID,
-		ObjectiveStatus: string(objective.Status), ObjectiveRevision: objective.Revision,
-		Goal: objective.Goal, Profile: objective.Profile, Acceptance: objective.Acceptance,
-		BuiltAt: transaction.CommittedAt, ResumeCommand: "summer resume",
 	}
 	if _, err := k.continuity.Project(ctx, state, cursor); err != nil {
 		code := continuity.ErrorCode(err)
@@ -418,7 +518,7 @@ func (k *kernel) receiptWithProjection(ctx context.Context, transaction ledger.T
 		return receipt
 	}
 	head, err := k.store.Head(ctx, transaction.ProjectID)
-	if err != nil || head.Revision != cursor.Revision || head.Digest != cursor.Digest {
+	if err != nil || head.Revision != cursor.Revision || head.Digest != cursor.Digest || head.ResumeDigest != cursor.ResumeDigest {
 		receipt.Projection = &ProjectionReceipt{Status: ProjectionRepairRequired, Code: string(continuity.CodeProjectionStale)}
 		return receipt
 	}
@@ -437,11 +537,75 @@ func receiptFromTransaction(transaction ledger.Transaction) Receipt {
 		if receipt.EntityID == "" {
 			receipt.EntityID = event.EntityID
 		}
+		if event.Kind == "ObjectiveStarted" || event.Kind == "ObjectiveSaved" {
+			var objective Objective
+			if json.Unmarshal(event.Data, &objective) == nil {
+				receipt.EntityRevision = objective.Revision
+				receipt.EntityStatus = string(objective.Status)
+			}
+		}
 	}
 	return receipt
 }
 
 func (k *kernel) Query(ctx context.Context, query Query) (View, error) {
+	if query.Kind == QueryLegacyRollback {
+		if k.continuity == nil {
+			return nil, &continuity.Error{Code: continuity.CodeCapabilityUnavailable, Op: "query legacy rollback", Err: errors.New("continuity module is not configured")}
+		}
+		rollback, err := k.continuity.InspectLegacyRollback(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return LegacyRollbackView{Rollback: rollback}, nil
+	}
+	if query.Kind == QueryLegacyMigration {
+		if k.continuity == nil {
+			return nil, &continuity.Error{Code: continuity.CodeCapabilityUnavailable, Op: "query legacy migration", Err: errors.New("continuity module is not configured")}
+		}
+		projectID, found, err := k.store.Project(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			migration, inspectErr := k.continuity.InspectLegacyNative(ctx)
+			if inspectErr != nil {
+				return nil, inspectErr
+			}
+			events, active, buildErr := buildLegacyMigrationEvents(migration)
+			if buildErr != nil {
+				return nil, migrationQueryError(buildErr)
+			}
+			if validateErr := validateLegacyMigrationDraft(migration.ProjectID, events); validateErr != nil {
+				return nil, migrationQueryError(validateErr)
+			}
+			resumeDigest, digestErr := continuity.CanonicalResumeDigest(continuityState(active, time.Time{}))
+			if digestErr != nil {
+				return nil, digestErr
+			}
+			preflightState := continuityState(active, time.Unix(1, 0).UTC())
+			if preflightErr := k.continuity.PreflightStart(ctx, preflightState, continuity.Cursor{Revision: 1, Digest: strings.Repeat("0", sha256.Size*2), ResumeDigest: resumeDigest}); preflightErr != nil {
+				return nil, preflightErr
+			}
+			return LegacyMigrationView{Migration: migration}, nil
+		}
+		if query.ProjectID != "" && query.ProjectID != projectID {
+			return nil, fmt.Errorf("canonical ledger belongs to project %q, requested %q", projectID, query.ProjectID)
+		}
+		transactions, transactionErr := k.store.Transactions(ctx, projectID)
+		if transactionErr != nil {
+			return nil, transactionErr
+		}
+		migration, transactionID, foldErr := foldLegacyMigration(projectID, transactions)
+		if foldErr != nil {
+			return nil, foldErr
+		}
+		switchPending, switchErr := k.continuity.LegacySwitchPending(ctx, migration.HandoffDigest)
+		if switchErr != nil {
+			return nil, switchErr
+		}
+		return LegacyMigrationView{Migration: migration, Committed: true, SwitchPending: switchPending, LedgerRevision: transactions[len(transactions)-1].Revision, TransactionID: transactionID}, nil
+	}
 	if query.Kind == QueryResume {
 		if k.continuity == nil {
 			return nil, &continuity.Error{Code: continuity.CodeCapabilityUnavailable, Op: "query resume", Err: errors.New("continuity module is not configured")}
@@ -459,17 +623,13 @@ func (k *kernel) Query(ctx context.Context, query Query) (View, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, transaction := range transactions {
-		for _, event := range transaction.Events {
-			if event.Kind != "ObjectiveStarted" || event.EntityID != query.EntityID {
-				continue
-			}
-			var objective Objective
-			if err := json.Unmarshal(event.Data, &objective); err != nil {
-				return nil, fmt.Errorf("decode ObjectiveStarted event: %w", err)
-			}
-			return ObjectiveView{Objective: objective}, nil
-		}
+	state, err := foldObjectives(transactions)
+	if err != nil {
+		return nil, err
+	}
+	objective, found := state.objectives[query.EntityID]
+	if found {
+		return ObjectiveView{Objective: objective}, nil
 	}
 	return nil, fmt.Errorf("objective %q not found", query.EntityID)
 }
@@ -490,36 +650,28 @@ func (source continuitySource) Snapshot(ctx context.Context, projectID string) (
 	if len(transactions) == 0 {
 		return continuity.State{}, continuity.Cursor{}, errors.New("canonical ledger has no objective")
 	}
-	var objective Objective
-	found := false
-	for _, transaction := range transactions {
-		for _, event := range transaction.Events {
-			if event.Kind != "ObjectiveStarted" {
-				continue
-			}
-			if found {
-				return continuity.State{}, continuity.Cursor{}, errors.New("canonical ledger has multiple root objectives")
-			}
-			if err := json.Unmarshal(event.Data, &objective); err != nil {
-				return continuity.State{}, continuity.Cursor{}, fmt.Errorf("decode ObjectiveStarted event: %w", err)
-			}
-			found = true
-		}
+	state, err := foldObjectives(transactions)
+	if err != nil {
+		return continuity.State{}, continuity.Cursor{}, err
 	}
-	if !found {
+	if state.activeID == "" {
 		return continuity.State{}, continuity.Cursor{}, errors.New("canonical ledger has no root objective")
 	}
+	objective := state.objectives[state.activeID]
 	last := transactions[len(transactions)-1]
-	return continuity.State{
-		ProjectID: projectID, ObjectiveID: objective.ObjectiveID, ObjectiveStatus: string(objective.Status),
-		ObjectiveRevision: objective.Revision, Goal: objective.Goal, Profile: objective.Profile, Acceptance: objective.Acceptance,
-		ResumeCommand: "summer resume", BuiltAt: last.CommittedAt,
-	}, continuity.Cursor{Revision: last.Revision, Digest: last.Digest}, nil
+	return continuityState(objective, last.CommittedAt), continuity.Cursor{Revision: last.Revision, Digest: last.Digest, ResumeDigest: last.ResumeDigest}, nil
 }
 
 func (source continuitySource) Head(ctx context.Context, projectID string) (continuity.Cursor, error) {
-	head, err := source.store.Head(ctx, projectID)
-	return continuity.Cursor{Revision: head.Revision, Digest: head.Digest}, err
+	transactions, err := source.store.Transactions(ctx, projectID)
+	if err != nil {
+		return continuity.Cursor{}, err
+	}
+	if len(transactions) == 0 {
+		return continuity.Cursor{}, nil
+	}
+	last := transactions[len(transactions)-1]
+	return continuity.Cursor{Revision: last.Revision, Digest: last.Digest, ResumeDigest: last.ResumeDigest}, nil
 }
 
 func validateEnvelope(command CommandEnvelope) *Rejection {
@@ -629,6 +781,9 @@ func validateStartObjective(start StartObjective) error {
 			return err
 		}
 	}
+	if err := validateValues(start.Next, "next item", maxNextItems); err != nil {
+		return err
+	}
 	if err := validateBoundedText(start.Profile, "objective profile", maxProfileChars); err != nil {
 		return err
 	}
@@ -638,6 +793,22 @@ func validateStartObjective(start StartObjective) error {
 		return fmt.Errorf("unsupported objective profile %q", start.Profile)
 	}
 	return nil
+}
+
+func defaultStartObjective(start *StartObjective) {
+	start.Goal = strings.TrimSpace(start.Goal)
+	if strings.TrimSpace(start.Title) == "" {
+		start.Title = start.Goal
+	}
+	if len(cleanStrings(start.Acceptance)) == 0 && start.Goal != "" {
+		start.Acceptance = []string{start.Goal}
+	}
+	if len(cleanStrings(start.Next)) == 0 && start.Goal != "" {
+		start.Next = []string{start.Goal}
+	}
+	if strings.TrimSpace(start.Profile) == "" {
+		start.Profile = "standard"
+	}
 }
 
 func validateBoundedText(value, label string, maxChars int) error {

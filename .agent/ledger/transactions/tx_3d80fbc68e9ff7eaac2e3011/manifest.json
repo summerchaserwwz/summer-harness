@@ -1,0 +1,24 @@
+{
+  "schema": "summer.transaction/v2",
+  "transaction_id": "tx_3d80fbc68e9ff7eaac2e3011",
+  "project_id": "project_804be50fde6758979800deaa",
+  "command_id": "cmd_175d00de49622547484974da",
+  "command_digest": "56309670fef1bfaf55d39a0fec8769ee83f9ce51bfab97c6c95a08107b375b58",
+  "resume_digest": "a6f489d115e25bd2368e24ffbd4b9f7561897004429dfe32846c4d0245e8fbf9",
+  "idempotency_key": "cmd_175d00de49622547484974da",
+  "correlation_id": "cmd_175d00de49622547484974da",
+  "issued_at": "2026-07-14T23:01:33.887009Z",
+  "actor": {
+    "actor_id": "user-local",
+    "session_id": "session_d230c6f05e09d976b95da136",
+    "runtime": "summer-cli",
+    "role": "user"
+  },
+  "revision": 3,
+  "previous_digest": "6158396b3a917060aece2561a7ca5f5b2c284a84095bc26355c9e94b56d0ca7a",
+  "digest": "646e2882c6cec3129a8da749fb60f27934a791acefcbbf2443b4445683795a7c",
+  "committed_at": "2026-07-14T23:01:33.905838Z",
+  "event_files": [
+    "0001.json"
+  ]
+}

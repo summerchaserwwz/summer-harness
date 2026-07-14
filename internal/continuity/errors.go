@@ -21,6 +21,13 @@ const (
 	CodeCapabilityUnavailable    Code = "CAPABILITY_UNAVAILABLE"
 	CodeMigrationRequired        Code = "MIGRATION_REQUIRED"
 	CodeLifecycleConflict        Code = "LIFECYCLE_CONFLICT"
+	CodeMigrationNotApplicable   Code = "MIGRATION_NOT_APPLICABLE"
+	CodeMigrationSourceChanged   Code = "MIGRATION_SOURCE_CHANGED"
+	CodeMigrationTooLarge        Code = "MIGRATION_TOO_LARGE"
+	CodeMigrationIncomplete      Code = "MIGRATION_INCOMPLETE"
+	CodeMigrationVerifyFailed    Code = "MIGRATION_VERIFY_FAILED"
+	CodeRollbackNotAllowed       Code = "ROLLBACK_NOT_ALLOWED"
+	CodeRollbackSourceDrift      Code = "ROLLBACK_SOURCE_DRIFT"
 )
 
 type Error struct {

@@ -41,30 +41,31 @@ type legacyHandoff struct {
 }
 
 type legacyTask struct {
-	Schema             string       `json:"schema"`
-	Kind               string       `json:"kind"`
-	ID                 string       `json:"id"`
-	Title              string       `json:"title"`
-	Goal               string       `json:"goal"`
-	Acceptance         []string     `json:"acceptance"`
-	Status             string       `json:"status"`
-	Profile            string       `json:"profile"`
-	Risk               string       `json:"risk"`
-	Revision           uint64       `json:"revision"`
-	ValidationRevision uint64       `json:"validation_revision"`
-	Done               []string     `json:"done"`
-	Next               []string     `json:"next"`
-	Validation         []string     `json:"validation"`
-	Blockers           []string     `json:"blockers"`
-	MustRead           []string     `json:"must_read"`
-	ResidualRisks      []string     `json:"residual_risks"`
-	Engine             string       `json:"engine"`
-	CreatedAt          string       `json:"created_at"`
-	CreatedBy          string       `json:"created_by"`
-	UpdatedAt          string       `json:"updated_at"`
-	LastWriter         string       `json:"last_writer"`
-	LastWorkSession    string       `json:"last_work_session"`
-	Review             legacyReview `json:"review"`
+	Schema             string          `json:"schema"`
+	Kind               string          `json:"kind"`
+	ID                 string          `json:"id"`
+	Title              string          `json:"title"`
+	Goal               string          `json:"goal"`
+	Acceptance         []string        `json:"acceptance"`
+	Status             string          `json:"status"`
+	Profile            string          `json:"profile"`
+	Risk               string          `json:"risk"`
+	Revision           uint64          `json:"revision"`
+	ValidationRevision uint64          `json:"validation_revision"`
+	Done               []string        `json:"done"`
+	Next               []string        `json:"next"`
+	Validation         []string        `json:"validation"`
+	Blockers           []string        `json:"blockers"`
+	MustRead           []string        `json:"must_read"`
+	ResidualRisks      []string        `json:"residual_risks"`
+	Engine             string          `json:"engine"`
+	CreatedAt          string          `json:"created_at"`
+	CreatedBy          string          `json:"created_by"`
+	UpdatedAt          string          `json:"updated_at"`
+	LastWriter         string          `json:"last_writer"`
+	LastWorkSession    string          `json:"last_work_session"`
+	Review             legacyReview    `json:"review"`
+	Closeout           *legacyCloseout `json:"closeout,omitempty"`
 }
 
 type legacyReview struct {
@@ -72,6 +73,16 @@ type legacyReview struct {
 	Findings         []string `json:"findings"`
 	ReviewedRevision uint64   `json:"reviewed_revision"`
 	Summary          string   `json:"summary"`
+	ReviewedAt       string   `json:"reviewed_at,omitempty"`
+	ReviewedBy       string   `json:"reviewed_by,omitempty"`
+	Independent      bool     `json:"independent,omitempty"`
+}
+
+type legacyCloseout struct {
+	Summary              string `json:"summary"`
+	CompletedAt          string `json:"completed_at"`
+	CompletedBy          string `json:"completed_by"`
+	ResidualAcknowledged bool   `json:"residual_acknowledged"`
 }
 
 var legacyTaskIDPattern = regexp.MustCompile(`^task_[A-Za-z0-9_-]+$`)
@@ -107,7 +118,7 @@ func (m *Module) Resume(ctx context.Context, source Source) (Capsule, error) {
 	}
 	raw, err := m.readHandoff()
 	if ErrorCode(err) == CodeHandoffNotFound && canonicalFound {
-		state, cursor, snapshotErr := source.Snapshot(ctx, canonicalProject)
+		state, cursor, snapshotErr := m.snapshotOrSource(ctx, canonicalProject, source)
 		if snapshotErr != nil {
 			return Capsule{}, snapshotErr
 		}

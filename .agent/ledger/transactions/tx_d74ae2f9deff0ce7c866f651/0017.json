@@ -1,0 +1,32 @@
+{
+  "event_id": "evt_7ab0dff1bc8aaf9be01ec9a3",
+  "kind": "FactRecorded",
+  "entity_id": "fact_20260714T163454369602Z_4a079b",
+  "data": {
+    "schema": "summer.legacy-import/v1",
+    "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+    "legacy_entity_id": "fact_20260714T163454369602Z_4a079b",
+    "legacy_task_id": "task_20260714T154324166611Z_8f7b2c",
+    "objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "source_path": ".agent/ledger/facts/task_20260714T154324166611Z_8f7b2c.jsonl",
+    "source_digest": "4ccd43d656087125a0c7b8a5b91c9b6dd8417767d8f3af8e4a603fc43ed44093",
+    "source_line": 6,
+    "record": {
+      "schema": "summer-harness/v1",
+      "kind": "fact",
+      "id": "fact_20260714T163454369602Z_4a079b",
+      "task_id": "task_20260714T154324166611Z_8f7b2c",
+      "statement": "M1 首批 Go vertical slices 已实现：Apply/Query/Execute 三入口契约、Memory/File Ledger、transaction digest chain、幂等重放与冲突拒绝、跨 Engine 恢复、symlink root 拒绝；Go test/race/vet 和 Python 20 项回归全部通过。",
+      "source": "commands:go-test-race-vet-and-python-unittest:2026-07-15",
+      "confidence": "high",
+      "tags": [
+        "m1",
+        "verification"
+      ],
+      "memory_class": "durable",
+      "observed_at": "2026-07-14T16:34:54.369631Z",
+      "created_ns": 1784046894369634000,
+      "session": "019f5f82-aa54-7d93-b921-181c740d3c76"
+    }
+  }
+}

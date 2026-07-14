@@ -1,0 +1,34 @@
+{
+  "event_id": "evt_c4902851be8dae504b45c126",
+  "kind": "DecisionRecorded",
+  "entity_id": "dec_20260714T155643041650Z_5cd509",
+  "data": {
+    "schema": "summer.legacy-import/v1",
+    "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+    "legacy_entity_id": "dec_20260714T155643041650Z_5cd509",
+    "legacy_task_id": "task_20260714T154324166611Z_8f7b2c",
+    "objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "source_path": ".agent/ledger/decisions/dec_20260714T155643041650Z_5cd509.md",
+    "source_digest": "3bdc3956ac39c92a1311e3b7b0c15197ff69a7d10e84fcf2b32513b228491dc7",
+    "record": {
+      "schema": "summer-harness/v1",
+      "kind": "decision",
+      "id": "dec_20260714T155643041650Z_5cd509",
+      "task_id": "task_20260714T154324166611Z_8f7b2c",
+      "title": "Release platform and license",
+      "question": "首发平台和开源许可证是什么？",
+      "chosen": "macOS 优先、随后 Windows/Linux；Apache-2.0",
+      "rejected": [
+        "三平台同时阻塞首发",
+        "无许可证或闭源"
+      ],
+      "why_not": [
+        "先验证作者真实环境的一键安装，同时为基础设施项目提供明确的专利授权。"
+      ],
+      "source": "assistant:recommended-default:2026-07-14",
+      "created_at": "2026-07-14T15:56:43.041699Z",
+      "created_ns": 1784044603041705000,
+      "created_by": "019f5f82-aa54-7d93-b921-181c740d3c76"
+    }
+  }
+}

@@ -1,42 +1,45 @@
 ---
 name: project-handoff
-description: Save or restore the one durable `.agent/HANDOFF.md` for a project without activating a full workflow. Use when the user explicitly asks to pause, hand off, continue in another session, restore prior work, or preserve context. It supports Direct, Summer native, and GSD pointer modes.
+description: Save or restore the single durable `.agent/HANDOFF.md` without activating a full Harness. Use when the user asks to save a handoff, pause for another session, continue previous work, or restore project context. It supports Direct snapshots, Summer native projections, and GSD pointers.
 ---
 
 # Project Handoff
 
-Use one small repository-local file to cross session boundaries. This skill does not activate Summer Harness and does not create a task ledger unless one already exists.
+Use `.agent/HANDOFF.md` as the only public cross-session entry. This Skill does not activate Summer Harness.
 
 ## Restore
 
-1. Find the project root and read applicable `AGENTS.md` plus `git status`.
-2. If `.agent/HANDOFF.md` exists, read it before other workflow state.
-3. Prefer `summer --repo <root> resume`. If the development binary is unavailable, resolve the installed `summer-harness` skill directory and run `python3 <summer-skill>/scripts/harnessctl.py --repo <root> resume`.
-4. Read only the returned `must_read` files and the canonical `source_path`.
-5. If mode is `gsd`, continue through the named `$gsd-*` command; `.planning/` remains canonical.
-6. If mode is `native`, use the active Summer task. If mode is `direct`, continue directly. If mode is `idle`, report that no work is active.
+1. Find the project root; read applicable `AGENTS.md` and `git status`.
+2. Read `.agent/HANDOFF.md` only when it is non-idle or the user asks to continue.
+3. Run `summer --repo <root> resume`, then open no more than its five `must_read` files.
+4. For `native`, continue through the current Objective. For `gsd`, follow the returned backend pointer. For `direct`, continue directly.
+5. On drift or lifecycle conflict, run `summer doctor` and fail closed. Never reconstruct state from chat history.
 
-Fail closed when `resume` reports a digest mismatch or lifecycle conflict. Run `summer --repo <root> doctor`; do not invent state from the chat transcript. A missing native v2 Handoff may be rebuilt from its Canonical Ledger, but drift is never silently repaired.
+The Python helper may be used only for legacy v1 Direct/GSD pointers when the Go command cannot write that mode. It is not a Native v2 fallback and must never run after `.agent/ledger/HEAD` exists.
 
-## Save Direct Work
+## Save Direct Or GSD State
 
-Write a concise snapshot directly; this creates no Task ledger or Harness config:
+Resolve the installed `summer-harness` Skill directory, then use its legacy helper only for these pointer modes:
 
 ```bash
 python3 <summer-skill>/scripts/harnessctl.py --repo <root> handoff \
   --mode direct \
-  --goal "<current observable outcome>" \
+  --goal "<observable outcome>" \
   --done "<completed result>" \
-  --next "<one concrete next action>" \
+  --next "<one action>" \
   --validation "<command and result>" \
   --must-read "<critical file>"
 ```
 
-Keep it below 4 KiB. Record at most five `must_read` paths. Do not copy conversation history, chain-of-thought, large diffs, or full design documents into Handoff.
+For GSD, use `--mode gsd --active-artifact .planning/STATE.md`; `.planning/` remains canonical. The public resume path is still this Skill and `.agent/HANDOFF.md`, not `$gsd-resume-work` directly.
 
-## Save Managed Work
+## Save Native V2
 
-- Native Summer task: use `checkpoint`; it derives Handoff from the canonical Task.
-- GSD task: use `handoff --mode gsd --active-artifact .planning/STATE.md`; never mirror phase state into `.agent/ledger/`.
+Use `summer save`; Handoff is derived from the Canonical Ledger:
 
-Always run `summer --repo <root> doctor` after saving when the Go CLI is installed; otherwise run the Python shim's `doctor`. The task is safely handed off only when the check succeeds or reports only an understood non-blocking warning.
+```bash
+summer --repo <root> save --done "<result>" --next "<one action>" --validation "<evidence>"
+summer --repo <root> doctor
+```
+
+Keep Handoff below 4 KiB, use no more than five repository-relative `must_read` files, and never store transcripts, chain-of-thought, source copies, secrets, or large diffs.

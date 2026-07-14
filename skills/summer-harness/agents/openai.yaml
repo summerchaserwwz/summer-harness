@@ -1,6 +1,6 @@
 interface:
   display_name: "Summer Harness"
-  short_description: "Opt-in durable workflow and context restore"
-  default_prompt: "Use $summer-harness to run this task with a lightweight persistent workflow."
+  short_description: "显式启用的持久工作流、迁移与跨 Session 有界恢复"
+  default_prompt: "使用 $summer-harness 以轻量持久工作流完成这项任务。"
 policy:
   allow_implicit_invocation: false

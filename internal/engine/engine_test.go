@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/summerchaserwwz/summer-harness/internal/continuity"
 	"github.com/summerchaserwwz/summer-harness/internal/engine"
 	"github.com/summerchaserwwz/summer-harness/internal/ledger"
 )
@@ -268,6 +272,176 @@ func TestObjectiveSurvivesEngineRestartWithFileLedger(t *testing.T) {
 	objectiveView, ok := view.(engine.ObjectiveView)
 	if !ok || objectiveView.Objective.Revision != 1 || objectiveView.Objective.Goal != "新的 Engine 能恢复同一 Root Objective" {
 		t.Fatalf("objective after restart = %#v", view)
+	}
+}
+
+func TestResumeUsesTheVerifiedSnapshotAfterValidatingTheLedgerChain(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	module, err := continuity.NewFile(root)
+	if err != nil {
+		t.Fatalf("new continuity module: %v", err)
+	}
+	store := &transactionCountingStore{Store: ledger.NewMemory()}
+	kernel := engine.New(store, engine.WithContinuity(module))
+	receipt, err := kernel.Apply(context.Background(), startObjectiveCommand(t, "snapshot-fast-path", 0))
+	if err != nil || !receipt.Accepted || receipt.Projection == nil || receipt.Projection.Status != engine.ProjectionCurrent {
+		t.Fatalf("start receipt=%#v err=%v", receipt, err)
+	}
+	store.transactionReads = 0
+
+	view, err := kernel.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	resume := view.(engine.ResumeView)
+	if resume.Capsule.LedgerRevision != 1 || resume.Capsule.Goal == "" {
+		t.Fatalf("resume capsule = %#v", resume.Capsule)
+	}
+	if store.transactionReads != 2 {
+		t.Fatalf("resume scanned canonical transactions %d times, want one pre-read and one stability validation", store.transactionReads)
+	}
+}
+
+func TestResumeFallsBackToLedgerWhenLegacyHeadHasNoResumeDigest(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	module, err := continuity.NewFile(root)
+	if err != nil {
+		t.Fatalf("new continuity module: %v", err)
+	}
+	store := &transactionCountingStore{Store: ledger.NewMemory()}
+	objective := engine.Objective{
+		ObjectiveID: "obj-legacy-resume", ProjectID: "project-legacy-resume",
+		Title: "旧账本", Goal: "旧 transaction 必须通过完整 fold 恢复",
+		Acceptance: []string{"恢复成功"}, Profile: "standard", Status: engine.ObjectiveActive,
+		Revision: 1, Done: []string{}, Next: []string{"继续迁移"}, Validation: []string{}, Blockers: []string{}, MustRead: []string{},
+	}
+	data, err := json.Marshal(objective)
+	if err != nil {
+		t.Fatalf("marshal objective: %v", err)
+	}
+	actor, err := json.Marshal(engine.ActorRef{ActorID: "legacy-user", SessionID: "legacy-session", Runtime: "go-test", Role: engine.ActorUser})
+	if err != nil {
+		t.Fatalf("marshal actor: %v", err)
+	}
+	_, err = store.Commit(context.Background(), ledger.Draft{
+		TransactionID: "tx-legacy-resume", ProjectID: objective.ProjectID,
+		CommandID: "cmd-legacy-resume", CommandDigest: "legacy-command-digest", IdempotencyKey: "legacy-resume",
+		CorrelationID: "corr-legacy-resume", IssuedAt: time.Date(2026, 7, 15, 4, 0, 0, 0, time.UTC), Actor: actor,
+		Events: []ledger.Event{{EventID: "evt-legacy-resume", Kind: "ObjectiveStarted", EntityID: objective.ObjectiveID, Data: data}},
+	}, 0)
+	if err != nil {
+		t.Fatalf("commit legacy transaction: %v", err)
+	}
+	kernel := engine.New(store, engine.WithContinuity(module))
+
+	for attempt := 0; attempt < 2; attempt++ {
+		before := store.transactionReads
+		view, queryErr := kernel.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+		if queryErr != nil {
+			t.Fatalf("resume attempt %d: %v", attempt, queryErr)
+		}
+		resume := view.(engine.ResumeView)
+		if resume.Capsule.Goal != objective.Goal || resume.Capsule.LedgerRevision != 1 {
+			t.Fatalf("resume capsule = %#v", resume.Capsule)
+		}
+		if store.transactionReads == before {
+			t.Fatalf("resume attempt %d used an unverified snapshot for a legacy head", attempt)
+		}
+	}
+}
+
+func TestApplyHoldsLifecycleLockAcrossCanonicalCommit(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	module, err := continuity.NewFile(root)
+	if err != nil {
+		t.Fatalf("new continuity module: %v", err)
+	}
+	store := &blockingCommitStore{
+		Memory:  ledger.NewMemory(),
+		reached: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	kernel := engine.New(store, engine.WithContinuity(module))
+	command := startObjectiveCommand(t, "lifecycle-lock", 0)
+	result := make(chan error, 1)
+	go func() {
+		receipt, applyErr := kernel.Apply(context.Background(), command)
+		if applyErr == nil && (!receipt.Accepted || receipt.Projection == nil || receipt.Projection.Status != engine.ProjectionCurrent) {
+			applyErr = fmt.Errorf("unexpected receipt: %#v", receipt)
+		}
+		result <- applyErr
+	}()
+	<-store.reached
+
+	competitor, err := continuity.NewFile(root)
+	if err != nil {
+		t.Fatalf("new competing continuity module: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if unlock, lockErr := competitor.LockLifecycle(ctx); !errors.Is(lockErr, context.DeadlineExceeded) {
+		if lockErr == nil {
+			_ = unlock()
+		}
+		t.Fatalf("competing lifecycle lock error = %v, want deadline exceeded", lockErr)
+	}
+	close(store.release)
+	if err := <-result; err != nil {
+		t.Fatalf("apply after releasing commit: %v", err)
+	}
+}
+
+func TestRetryingAnOlderCommandCannotRecreateAStaleHandoff(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	module, err := continuity.NewFile(root)
+	if err != nil {
+		t.Fatalf("new continuity module: %v", err)
+	}
+	store := ledger.NewMemory()
+	kernel := engine.New(store, engine.WithContinuity(module))
+	start := startObjectiveCommand(t, "stale-projection-retry", 0)
+	started, err := kernel.Apply(context.Background(), start)
+	if err != nil || !started.Accepted {
+		t.Fatalf("start receipt=%#v err=%v", started, err)
+	}
+	nextValues := []string{"继续当前状态"}
+	savePayload, err := json.Marshal(engine.SaveObjective{
+		ObjectiveID: started.EntityID, ExpectedObjectiveRevision: 1, Done: []string{"已推进"}, Next: &nextValues,
+	})
+	if err != nil {
+		t.Fatalf("marshal save: %v", err)
+	}
+	saved, err := kernel.Apply(context.Background(), engine.CommandEnvelope{
+		Schema: engine.CommandSchemaV2, CommandID: "cmd-save-after-start", IdempotencyKey: "save-after-start",
+		CorrelationID: "corr-save-after-start", ProjectID: start.ProjectID, ExpectedRevision: 1,
+		Actor: start.Actor, IssuedAt: start.IssuedAt.Add(time.Minute), Kind: engine.CommandSaveObjective, Payload: savePayload,
+	})
+	if err != nil || !saved.Accepted || saved.NewRevision != 2 {
+		t.Fatalf("save receipt=%#v err=%v", saved, err)
+	}
+	if err := os.Remove(filepath.Join(root, ".agent", "HANDOFF.md")); err != nil {
+		t.Fatalf("remove handoff: %v", err)
+	}
+
+	retry, err := kernel.Apply(context.Background(), start)
+	if err != nil || !retry.Accepted || retry.TransactionID != started.TransactionID || retry.Projection == nil || retry.Projection.Status != engine.ProjectionCurrent {
+		t.Fatalf("retry receipt=%#v err=%v", retry, err)
+	}
+	view, err := kernel.Query(context.Background(), engine.Query{Kind: engine.QueryResume})
+	if err != nil {
+		t.Fatalf("resume after retry: %v", err)
+	}
+	resume := view.(engine.ResumeView)
+	if resume.Capsule.LedgerRevision != 2 || resume.Capsule.Revision != 2 || !reflect.DeepEqual(resume.Capsule.Done, []string{"已推进"}) {
+		t.Fatalf("resume capsule = %#v", resume.Capsule)
 	}
 }
 
@@ -545,6 +719,32 @@ func startObjectiveCommand(t *testing.T, suffix string, expectedRevision uint64)
 		Kind:    engine.CommandStartObjective,
 		Payload: payload,
 	}
+}
+
+type transactionCountingStore struct {
+	ledger.Store
+	transactionReads int
+}
+
+type blockingCommitStore struct {
+	*ledger.Memory
+	reached chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingCommitStore) Commit(ctx context.Context, draft ledger.Draft, expectedRevision uint64) (ledger.Transaction, error) {
+	close(s.reached)
+	select {
+	case <-ctx.Done():
+		return ledger.Transaction{}, ctx.Err()
+	case <-s.release:
+		return s.Memory.Commit(ctx, draft, expectedRevision)
+	}
+}
+
+func (s *transactionCountingStore) Transactions(ctx context.Context, projectID string) ([]ledger.Transaction, error) {
+	s.transactionReads++
+	return s.Store.Transactions(ctx, projectID)
 }
 
 type futureRevisionStore struct {

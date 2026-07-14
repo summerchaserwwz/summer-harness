@@ -51,6 +51,55 @@ func acquireProjectionLock(ctx context.Context, path string) (func() error, erro
 	}, nil
 }
 
+func acquireProjectionDirectoryLock(ctx context.Context, path string) (func() error, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return nil, errors.New("projection lock is not a regular directory")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := file.Stat()
+	if err != nil || !opened.IsDir() || !os.SameFile(info, opened) {
+		file.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("projection lock directory changed while opening")
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			file.Close()
+			return nil, err
+		}
+		err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+			file.Close()
+			return nil, err
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			file.Close()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return func() error {
+		return errors.Join(syscall.Flock(int(file.Fd()), syscall.LOCK_UN), file.Close())
+	}, nil
+}
+
 func fsyncProjectionDirectory(path string) error {
 	file, err := os.Open(path)
 	if err != nil {

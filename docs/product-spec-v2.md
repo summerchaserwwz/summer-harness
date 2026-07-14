@@ -6,7 +6,7 @@
 
 Summer Harness 是一个 Git-native、local-first 的 Coding Agent continuity kernel。普通任务完全绕过它；用户显式启用后，它负责跨 Session 恢复、多 Agent ownership、真实 Evidence、审查门禁、经验候选和按需 GUI。
 
-它不是模型，不是 Prompt 大礼包，也不要求常驻 daemon。Codex、Claude、GSD 和未来 Worker Runner 都是 Adapter；一个项目始终只有一个 lifecycle owner 和一个 Canonical Ledger。
+它不是模型，不是 Prompt 大礼包，也不要求常驻 daemon。Codex、Claude 和 GSD 是 Host Agent Adapter；Summer 不复制它们的进程调度器。一个项目始终只有一个 lifecycle owner 和一个 Canonical Ledger。
 
 ## 目标用户
 
@@ -58,7 +58,7 @@ summer run -- <command>
 summer work assign|claim|submit|ingest
 summer review submit
 summer evolve scan|approve|apply|rollback
-summer agent run|cancel|retry
+summer adapter status|export|ingest
 summer gsd ...
 ```
 
@@ -84,15 +84,17 @@ summer gsd ...
 
 ## 多 Agent
 
-第一阶段先治理宿主启动的 Worker，随后实现内建 Runner。所有 Worker 必须通过 Assignment 工作，并在独立 branch/worktree 中修改代码。Worker 只能提交 Proposal；Coordinator 是 Canonical Ledger 和 Handoff 的唯一推进者。
+Summer 只治理宿主启动的 Worker，不内建常驻队列或模型进程调度器。所有 Worker 必须通过 Assignment 工作，并在独立 branch/worktree 中修改代码。Worker 只能提交 Proposal；Coordinator 是 Canonical Ledger 和 Handoff 的唯一推进者。
 
-内建 Runner 最终支持：
+Host Agent Adapter 最终支持：
 
-- Codex / Claude CLI Adapter。
-- 并发上限、队列、预算、超时、取消和重试。
-- worktree 自动创建、清理和恢复。
+- Codex、Claude 与 GSD 的能力/身份映射。
+- 导出有界 Assignment capsule，接收 Proposal 与宿主执行状态。
+- 校验 branch/worktree、base SHA、allowed paths 和 capability。
 - Proposal ingest 与 merge gate。
 - 失败后保留 Assignment、分支、提交和 Evidence，Session 可以丢弃。
+
+并发、队列、预算、超时、取消、重试和 worktree 创建由宿主负责。Summer 记录并验证结果，但不建立第二套运行控制面。
 
 ## Evidence 与完成门禁
 

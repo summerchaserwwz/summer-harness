@@ -1,0 +1,101 @@
+{
+  "event_id": "evt_87cb35c15b0d6ac8f60c7fab",
+  "kind": "ObjectiveImported",
+  "entity_id": "obj_2772871fc1bc9eff092b09f5",
+  "data": {
+    "schema": "summer.legacy-import/v1",
+    "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+    "legacy_entity_id": "task_20260714T154324166611Z_8f7b2c",
+    "legacy_task_id": "task_20260714T154324166611Z_8f7b2c",
+    "objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "source_path": ".agent/ledger/tasks/task_20260714T154324166611Z_8f7b2c.md",
+    "source_digest": "03536c3c2e13e420d91be4685105b7c1cee570455a6bcc293a0d891e481b6806",
+    "objective": {
+      "objective_id": "obj_2772871fc1bc9eff092b09f5",
+      "project_id": "project_804be50fde6758979800deaa",
+      "title": "构建并开源 Summer Harness",
+      "goal": "把 Summer Harness 迭代为易安装、易使用、默认轻量、支持可靠跨 session、多 Agent 协作、候选式自我进化和真实 GUI 看板的开源 Coding Agent Harness，并发布到 summerchaserwwz/summer-harness。",
+      "acceptance": [
+        "普通任务保持 Direct-first，完整 Harness 只能显式启用，且冷恢复性能不明显退化。",
+        "唯一 HANDOFF 能跨独立 session 可靠恢复，权威状态与投影漂移必须 fail-closed。",
+        "多 Agent 工作具备任务所有权、隔离、provenance 和安全合并约束，不产生并列账本。",
+        "自我进化只生成有证据的候选规则，必须经用户确认后才能生效。",
+        "GUI 提供真实任务、证据、关系、Agent、经验候选和健康状态看板，数据库或缓存只作为可重建投影。",
+        "提供清晰的一键安装、中文文档、示例、自动测试和公开 GitHub 仓库。"
+      ],
+      "profile": "high-risk",
+      "risk": "high",
+      "status": "active",
+      "revision": 9,
+      "done": [
+        "M0/M1-A 已完成架构冻结、公开仓库和 Go transaction Ledger foundation。",
+        "M1-B 已完成 Continuity vertical slice：真实 summer resume/doctor、v1 三模式恢复、v2 有界 Handoff/Capsule、缺失投影重建、生命周期/容量 fail-closed 与 CLI 边界防护。"
+      ],
+      "next": [
+        "完成迁移 fault tests、CLI 文档与独立安全审查后提交并推送。"
+      ],
+      "validation": [
+        "M1-C 当前验证：Go migration/rollback/full-history/concurrency 集成测试与 Python 25 项回归通过。"
+      ],
+      "blockers": [],
+      "must_read": [
+        "docs/product-spec-v2.md",
+        "docs/architecture-v2.md",
+        "docs/data-model-v2.md",
+        "docs/threat-model.md",
+        "docs/roadmap.md"
+      ]
+    },
+    "record": {
+      "schema": "summer-harness/v1",
+      "kind": "task",
+      "id": "task_20260714T154324166611Z_8f7b2c",
+      "title": "构建并开源 Summer Harness",
+      "goal": "把 Summer Harness 迭代为易安装、易使用、默认轻量、支持可靠跨 session、多 Agent 协作、候选式自我进化和真实 GUI 看板的开源 Coding Agent Harness，并发布到 summerchaserwwz/summer-harness。",
+      "acceptance": [
+        "普通任务保持 Direct-first，完整 Harness 只能显式启用，且冷恢复性能不明显退化。",
+        "唯一 HANDOFF 能跨独立 session 可靠恢复，权威状态与投影漂移必须 fail-closed。",
+        "多 Agent 工作具备任务所有权、隔离、provenance 和安全合并约束，不产生并列账本。",
+        "自我进化只生成有证据的候选规则，必须经用户确认后才能生效。",
+        "GUI 提供真实任务、证据、关系、Agent、经验候选和健康状态看板，数据库或缓存只作为可重建投影。",
+        "提供清晰的一键安装、中文文档、示例、自动测试和公开 GitHub 仓库。"
+      ],
+      "status": "active",
+      "profile": "high-risk",
+      "risk": "high",
+      "revision": 9,
+      "validation_revision": 9,
+      "done": [
+        "M0/M1-A 已完成架构冻结、公开仓库和 Go transaction Ledger foundation。",
+        "M1-B 已完成 Continuity vertical slice：真实 summer resume/doctor、v1 三模式恢复、v2 有界 Handoff/Capsule、缺失投影重建、生命周期/容量 fail-closed 与 CLI 边界防护。"
+      ],
+      "next": [
+        "完成迁移 fault tests、CLI 文档与独立安全审查后提交并推送。"
+      ],
+      "validation": [
+        "M1-C 当前验证：Go migration/rollback/full-history/concurrency 集成测试与 Python 25 项回归通过。"
+      ],
+      "blockers": [],
+      "must_read": [
+        "docs/product-spec-v2.md",
+        "docs/architecture-v2.md",
+        "docs/data-model-v2.md",
+        "docs/threat-model.md",
+        "docs/roadmap.md"
+      ],
+      "residual_risks": [],
+      "engine": "summer",
+      "created_at": "2026-07-14T15:43:24.166779Z",
+      "created_by": "019f5f82-aa54-7d93-b921-181c740d3c76",
+      "updated_at": "2026-07-14T21:32:12.985604Z",
+      "last_writer": "session_59bd844fa73bdd89",
+      "last_work_session": "session_59bd844fa73bdd89",
+      "review": {
+        "approved": false,
+        "findings": [],
+        "reviewed_revision": 0,
+        "summary": ""
+      }
+    }
+  }
+}

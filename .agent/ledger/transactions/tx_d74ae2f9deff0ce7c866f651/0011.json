@@ -1,0 +1,33 @@
+{
+  "event_id": "evt_55b415b4ef64b903a339a1ec",
+  "kind": "DecisionRecorded",
+  "entity_id": "dec_20260714T194013800247Z_91829f",
+  "data": {
+    "schema": "summer.legacy-import/v1",
+    "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+    "legacy_entity_id": "dec_20260714T194013800247Z_91829f",
+    "legacy_task_id": "task_20260714T154324166611Z_8f7b2c",
+    "objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "source_path": ".agent/ledger/decisions/dec_20260714T194013800247Z_91829f.md",
+    "source_digest": "b7dd56ec4de5ac4971167bd2aaeb095da95d7961a691acfc52119483c1f3508e",
+    "record": {
+      "schema": "summer-harness/v1",
+      "kind": "decision",
+      "id": "dec_20260714T194013800247Z_91829f",
+      "task_id": "task_20260714T154324166611Z_8f7b2c",
+      "title": "Bounded semantic memory, not transcripts",
+      "question": "跨 Session 的记忆完整应保存完整聊天，还是保存可行动语义？",
+      "chosen": "默认保存有界但语义完整的目标、Decision、Fact、Evidence、进展、下一步、阻塞与风险；原始聊天仅在用户显式要求时作为私有 Artifact。",
+      "rejected": [
+        "默认保存完整聊天或思维链"
+      ],
+      "why_not": [
+        "完整 transcript 会增加隐私、存储和上下文腐烂风险，不是可靠恢复所需的最小充分状态。"
+      ],
+      "source": "user:2026-07-15:confirmed-semantic-memory",
+      "created_at": "2026-07-14T19:40:13.800276Z",
+      "created_ns": 1784058013800280000,
+      "created_by": "session_59bd844fa73bdd89"
+    }
+  }
+}

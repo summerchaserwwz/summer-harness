@@ -1,0 +1,22 @@
+{
+  "event_id": "evt_8e4937a1589821ff53d5f087",
+  "kind": "LegacyMigrationCompleted",
+  "entity_id": "migration_2ff97e5d32f5361c1266b5e9",
+  "data": {
+    "schema": "summer.legacy-import/v1",
+    "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+    "project_id": "project_804be50fde6758979800deaa",
+    "source_digest": "2ff97e5d32f5361c1266b5e9890c23a3da6d9bf825edc2c5f1296e333db8a671",
+    "semantic_digest": "6c0a59691586e6661c19d1544600fdbc3d9397f09b826e51319e4e3ca438de52",
+    "backup_manifest_digest": "d1160a8daf7f97fa4d0d81122f3e7d29348be01bb772ebaf53fb37ef64365e28",
+    "handoff_digest": "3abd425cb03bbea1717fb520a2bd45c1f1f0bf60645c1df74e4e2ed57d2be887",
+    "active_legacy_task_id": "task_20260714T154324166611Z_8f7b2c",
+    "active_objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "counts": {
+      "objectives": 1,
+      "decisions": 10,
+      "facts": 8,
+      "fact_invalidations": 1
+    }
+  }
+}

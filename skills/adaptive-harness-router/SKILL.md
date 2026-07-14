@@ -1,46 +1,25 @@
 ---
 name: adaptive-harness-router
-description: Lightweight compatibility router for choosing Direct, one narrow capability skill, Project Handoff, Summer native, or a GSD backend. Use when the user explicitly asks which workflow or harness route to choose, or when migrating an older harness setup. It never auto-activates Harness.
+description: Compatibility-only router for explaining or migrating older Harness setups into Direct, Project Handoff, Summer native, or GSD ownership. Use only when the user explicitly asks which route to choose or needs migration from an older router; it never auto-activates Harness and is not part of the default installed surface.
 ---
 
 # Adaptive Harness Router
 
-Return one route and one short reason. Do not initialize files while routing.
-
-## Decision Order
+Return one route and one reason. Do not initialize files.
 
 1. Default to `Direct`.
-2. If one specialist capability materially improves the task, choose `Direct + <skill>`.
-3. If the only durable need is another session, choose `Direct + project-handoff`.
-4. Only after explicit user authorization for Harness, choose `Summer native` for bounded persistent work.
-5. Choose `GSD backend` only for explicit Harness/GSD work that is genuinely multi-phase and benefits from fresh-context execution.
+2. Use `Direct + Skill` for one explicitly useful specialist capability.
+3. Use `Direct + Handoff` when persistence across sessions is the only durable need.
+4. Use `Summer native` only after explicit Harness authorization.
+5. Use `GSD backend` only after explicit Harness/GSD authorization for genuinely multi-phase fresh-context work.
 
-Complexity, file count, duration, subagents, or risk may justify recommending a route, but never silently authorize Harness.
+State must have one owner:
 
-## Capability Map
-
-- requirements stress-test: `grilling`, only when the user explicitly asks to be grilled or questioned one decision at a time
-- bug root cause: `diagnosing-bugs`
-- architecture and module boundaries: `codebase-design`
-- domain concepts: `domain-modeling`
-- TDD: explicit request or risk-driven need
-- review: explicit request or Summer risk gate
-- product/design/QA: one selected gstack skill when its narrow capability fits
-- GSD: phase lifecycle owner, never a capability add-on
-
-Do not route through `ask-matt`. The upstream skill owns a separate idea-to-ship flow and would duplicate this lifecycle router.
-
-## State Rule
-
-There is exactly one lifecycle owner and one cross-session entry point:
-
-- Direct: no state, or `.agent/HANDOFF.md` only.
+- Direct: none, or `.agent/HANDOFF.md` only.
 - Summer native: `.agent/ledger/` canonical; Handoff derived.
 - GSD: `.planning/` canonical; Handoff pointer only.
 
-Do not route to Super Dev, Superpowers, old Coding Agent Harness, or Stellarlink Harness. Do not create parallel ledgers.
-
-Output format:
+Do not route through `ask-matt`, Superpowers, Super Dev, old Coding Agent Harness, or Stellarlink Harness. Matt is a capability collection, not a lifecycle. gstack is invoked only when the user explicitly names a concrete Skill; its own sessions or telemetry are never Summer state.
 
 ```text
 Route: <Direct | Direct + Skill | Direct + Handoff | Summer native | GSD backend>

@@ -39,6 +39,7 @@ type Draft struct {
 	ProjectID      string          `json:"project_id"`
 	CommandID      string          `json:"command_id"`
 	CommandDigest  string          `json:"command_digest"`
+	ResumeDigest   string          `json:"resume_digest,omitempty"`
 	IdempotencyKey string          `json:"idempotency_key"`
 	CorrelationID  string          `json:"correlation_id"`
 	CausationID    string          `json:"causation_id,omitempty"`
@@ -56,8 +57,21 @@ type Transaction struct {
 }
 
 type Head struct {
-	Revision uint64 `json:"revision"`
-	Digest   string `json:"digest"`
+	Revision     uint64 `json:"revision"`
+	Digest       string `json:"digest"`
+	ResumeDigest string `json:"resume_digest,omitempty"`
+}
+
+type GenesisRef struct {
+	ProjectID     string `json:"project_id"`
+	TransactionID string `json:"transaction_id"`
+	Digest        string `json:"digest"`
+}
+
+type GenesisQuarantiner interface {
+	LoadGenesis(ctx context.Context, ref GenesisRef, migrationID string) (Transaction, error)
+	QuarantineGenesis(ctx context.Context, ref GenesisRef, migrationID string) error
+	CompleteGenesisQuarantine(ctx context.Context, ref GenesisRef, migrationID string) error
 }
 
 type Store interface {
@@ -66,6 +80,12 @@ type Store interface {
 	FindByIdempotency(ctx context.Context, projectID, idempotencyKey string) (Transaction, bool, error)
 	Commit(ctx context.Context, draft Draft, expectedRevision uint64) (Transaction, error)
 	Transactions(ctx context.Context, projectID string) ([]Transaction, error)
+}
+
+// ValidateDraft exposes the canonical transaction limits to command builders
+// that must fail before a durable write, such as legacy migration dry-runs.
+func ValidateDraft(draft Draft) error {
+	return validateDraft(draft)
 }
 
 func validateDraft(draft Draft) error {
@@ -86,6 +106,12 @@ func validateDraft(draft Draft) error {
 	}
 	if draft.IssuedAt.IsZero() {
 		return errors.New("issued_at is required")
+	}
+	if draft.ResumeDigest != "" {
+		decoded, err := hex.DecodeString(draft.ResumeDigest)
+		if err != nil || len(decoded) != sha256.Size {
+			return fmt.Errorf("resume_digest must be a %d-byte SHA-256 digest", sha256.Size)
+		}
 	}
 	if len(draft.CausationID) > maxLedgerFieldBytes {
 		return fmt.Errorf("causation_id exceeds %d-byte limit", maxLedgerFieldBytes)

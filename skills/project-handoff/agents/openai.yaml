@@ -1,6 +1,6 @@
 interface:
-  display_name: "Project Handoff"
-  short_description: "Save or restore one durable project handoff"
-  default_prompt: "Use $project-handoff to save or restore the project handoff."
+  display_name: "项目交接"
+  short_description: "保存或恢复唯一项目交接，不启动完整 Harness 流程"
+  default_prompt: "使用 $project-handoff 保存或恢复当前项目交接。"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

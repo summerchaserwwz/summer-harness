@@ -1,0 +1,32 @@
+{
+  "event_id": "evt_f323f0bdad1bd0f514ab1f5d",
+  "kind": "FactRecorded",
+  "entity_id": "fact_20260714T155643095860Z_d2b446",
+  "data": {
+    "schema": "summer.legacy-import/v1",
+    "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+    "legacy_entity_id": "fact_20260714T155643095860Z_d2b446",
+    "legacy_task_id": "task_20260714T154324166611Z_8f7b2c",
+    "objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "source_path": ".agent/ledger/facts/task_20260714T154324166611Z_8f7b2c.jsonl",
+    "source_digest": "4ccd43d656087125a0c7b8a5b91c9b6dd8417767d8f3af8e4a603fc43ed44093",
+    "source_line": 4,
+    "record": {
+      "schema": "summer-harness/v1",
+      "kind": "fact",
+      "id": "fact_20260714T155643095860Z_d2b446",
+      "task_id": "task_20260714T154324166611Z_8f7b2c",
+      "statement": "三套独立 Kernel 设计均收敛到三个外部入口、Go 单 binary、按需 Web GUI、可重建 Projection、machine Evidence、Root Objective/WorkItem、多 Agent Proposal ingest 和人工批准 Evolution。",
+      "source": "agents:minimal_kernel,extensible_kernel,ux_first_kernel:2026-07-14",
+      "confidence": "high",
+      "tags": [
+        "architecture",
+        "convergence"
+      ],
+      "memory_class": "durable",
+      "observed_at": "2026-07-14T15:56:43.095882Z",
+      "created_ns": 1784044603095886000,
+      "session": "019f5f82-aa54-7d93-b921-181c740d3c76"
+    }
+  }
+}

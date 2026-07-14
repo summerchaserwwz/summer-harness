@@ -1,6 +1,6 @@
 interface:
-  display_name: "轻量 Harness 路由"
-  short_description: "Choose the lightest sufficient workflow route"
-  default_prompt: "Use $adaptive-harness-router to choose the lightest sufficient route."
+  display_name: "兼容路由器"
+  short_description: "迁移旧 Harness 配置并解释最轻量的生命周期路由"
+  default_prompt: "使用 $adaptive-harness-router 解释或迁移旧 Harness 路由。"
 policy:
   allow_implicit_invocation: false

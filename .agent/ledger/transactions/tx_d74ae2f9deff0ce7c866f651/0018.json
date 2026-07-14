@@ -1,0 +1,26 @@
+{
+  "event_id": "evt_a5ed1c430c3c78ea318a73c3",
+  "kind": "FactInvalidated",
+  "entity_id": "inv_20260714T180846103465Z_c32c1e",
+  "data": {
+    "schema": "summer.legacy-import/v1",
+    "migration_id": "migration_2ff97e5d32f5361c1266b5e9",
+    "legacy_entity_id": "inv_20260714T180846103465Z_c32c1e",
+    "legacy_task_id": "task_20260714T154324166611Z_8f7b2c",
+    "objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "source_path": ".agent/ledger/facts/task_20260714T154324166611Z_8f7b2c.jsonl",
+    "source_digest": "4ccd43d656087125a0c7b8a5b91c9b6dd8417767d8f3af8e4a603fc43ed44093",
+    "source_line": 7,
+    "record": {
+      "schema": "summer-harness/v1",
+      "kind": "fact_invalidation",
+      "id": "inv_20260714T180846103465Z_c32c1e",
+      "task_id": "task_20260714T154324166611Z_8f7b2c",
+      "invalidates": "fact_20260714T163454369602Z_4a079b",
+      "reason": "该 Fact 把最终三入口架构误写为当前实现；M1-A 只暴露已实现的 Apply/Query，Execute 延至 M2。",
+      "observed_at": "2026-07-14T18:08:46.103484Z",
+      "created_ns": 1784052526103488000,
+      "session": "session_59bd844fa73bdd89"
+    }
+  }
+}
