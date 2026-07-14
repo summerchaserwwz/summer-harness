@@ -1,0 +1,46 @@
+{
+  "event_id": "evt_ec3b8941fb0b46fce03eb47e",
+  "kind": "ObjectiveSaved",
+  "entity_id": "obj_2772871fc1bc9eff092b09f5",
+  "data": {
+    "objective_id": "obj_2772871fc1bc9eff092b09f5",
+    "project_id": "project_804be50fde6758979800deaa",
+    "title": "构建并开源 Summer Harness",
+    "goal": "把 Summer Harness 迭代为易安装、易使用、默认轻量、支持可靠跨 session、多 Agent 协作、候选式自我进化和真实 GUI 看板的开源 Coding Agent Harness，并发布到 summerchaserwwz/summer-harness。",
+    "acceptance": [
+      "普通任务保持 Direct-first，完整 Harness 只能显式启用，且冷恢复性能不明显退化。",
+      "唯一 HANDOFF 能跨独立 session 可靠恢复，权威状态与投影漂移必须 fail-closed。",
+      "多 Agent 工作具备任务所有权、隔离、provenance 和安全合并约束，不产生并列账本。",
+      "自我进化只生成有证据的候选规则，必须经用户确认后才能生效。",
+      "GUI 提供真实任务、证据、关系、Agent、经验候选和健康状态看板，数据库或缓存只作为可重建投影。",
+      "提供清晰的一键安装、中文文档、示例、自动测试和公开 GitHub 仓库。"
+    ],
+    "profile": "high-risk",
+    "risk": "high",
+    "status": "active",
+    "revision": 12,
+    "done": [
+      "M0/M1-A 已完成架构冻结、公开仓库和 Go transaction Ledger foundation。",
+      "M1-B 已完成 Continuity vertical slice：真实 summer resume/doctor、v1 三模式恢复、v2 有界 Handoff/Capsule、缺失投影重建、生命周期/容量 fail-closed 与 CLI 边界防护。",
+      "M1-C 已完成 v1 全历史迁移、rollback 持久门禁、轻量默认能力面与本仓库 v2 dogfood 迁移。",
+      "M1-C 推送前独立审查已修复 8 个现实触发的完整性、路径、恢复和 CLI 契约问题，并由原审查代理复核通过。",
+      "M1-C commit d9bc8dc 已通过普通 push 发布到 origin/main。"
+    ],
+    "next": [
+      "确认 v0.x 产品定位后，定义 M2 machine Evidence 的最小可信闭环。"
+    ],
+    "validation": [
+      "go test -race -count=1 ./...、go vet ./...、Python 28 项回归全部通过。",
+      "三个 Skill quick_validate、system_doctor、真实 resume/doctor、secret/path/history scan 与 git diff --check 通过。",
+      "git ls-remote origin main 已确认 d9bc8dc 发布成功。"
+    ],
+    "blockers": [],
+    "must_read": [
+      "README.md",
+      "docs/architecture-v2.md",
+      "docs/product-spec-v2.md",
+      "docs/roadmap.md",
+      "docs/threat-model.md"
+    ]
+  }
+}

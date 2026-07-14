@@ -1,8 +1,8 @@
 {
   "schema": "summer.ledger-head/v2",
   "project_id": "project_804be50fde6758979800deaa",
-  "transaction_id": "tx_3d80fbc68e9ff7eaac2e3011",
-  "revision": 3,
-  "digest": "646e2882c6cec3129a8da749fb60f27934a791acefcbbf2443b4445683795a7c",
-  "resume_digest": "a6f489d115e25bd2368e24ffbd4b9f7561897004429dfe32846c4d0245e8fbf9"
+  "transaction_id": "tx_5aa75023505846783cc05df6",
+  "revision": 4,
+  "digest": "94ae64cac33d917a2627584a07a6436bad7c8898e7f07ee7e3772b2ed479ab0b",
+  "resume_digest": "a145707a4f0ed93ac2040105c193fc705c24eb7c56bb0ecb4b913d5bd3618e05"
 }
