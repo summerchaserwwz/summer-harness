@@ -1,4 +1,11 @@
+---
+status: superseded
+superseded_by: architecture-v3.md
+---
+
 # Summer Harness v2 Architecture
+
+> 历史实现契约：用于 Native v2 兼容读取与迁移审计。当前目标架构见 [architecture-v3.md](architecture-v3.md)。本文件中的 Root Objective、WorkItem 和全域 Canonical Ledger 不再是新工作的目标模型。
 
 ## 结论
 

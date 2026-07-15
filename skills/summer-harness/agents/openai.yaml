@@ -1,6 +1,6 @@
 interface:
   display_name: "Summer Harness"
-  short_description: "显式启用的持久工作流、迁移与跨 Session 有界恢复"
-  default_prompt: "使用 $summer-harness 以轻量持久工作流完成这项任务。"
+  short_description: "显式选择 Handoff Lite 或 Governed GSD，并提供可信交付"
+  default_prompt: "使用 $summer-harness 显式选择 Lite 或 GSD 路径完成这项任务。"
 policy:
   allow_implicit_invocation: false

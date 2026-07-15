@@ -1,25 +1,26 @@
 ---
 name: project-handoff
-description: Save or restore the single durable `.agent/HANDOFF.md` without activating a full Harness. Use when the user asks to save a handoff, pause for another session, continue previous work, or restore project context. It supports Direct snapshots, Summer native projections, and GSD pointers.
+description: Save or restore the single durable `.agent/HANDOFF.md` without activating a full Harness. Use for sequential Direct/Handoff Lite continuity, Governed GSD pointers, or legacy Native recovery/migration.
 ---
 
 # Project Handoff
 
-Use `.agent/HANDOFF.md` as the only public cross-session entry. This Skill does not activate Summer Harness.
+`.agent/HANDOFF.md` is the only public cross-session entry. This Skill does not activate Summer Harness or choose a heavy Workflow without explicit intent.
 
 ## Restore
 
 1. Find the project root; read applicable `AGENTS.md` and `git status`.
-2. Read `.agent/HANDOFF.md` only when it is non-idle or the user asks to continue.
-3. Run `summer --repo <root> resume`, then open no more than its five `must_read` files.
-4. For `native`, continue through the current Objective. For `gsd`, follow the returned backend pointer. For `direct`, continue directly.
-5. On drift or lifecycle conflict, run `summer doctor` and fail closed. Never reconstruct state from chat history.
+2. Read Handoff only when non-idle or the user asks to continue.
+3. Validate size, mode, revision/digest, source reference and safe `must_read` paths.
+4. Route by mode:
+   - `lite|direct`: restore the one sequential working set; `direct` is a legacy read alias and the target writer emits `lite`;
+   - `gsd`: validate `.planning` snapshot digest and follow current Phase/Plan pointer;
+   - `legacy-native|native`: use current `summer resume/doctor` only for already-authorized compatibility work, then follow the explicit migration plan when available.
+5. Never reconstruct state from chat history, mtime or Agent confidence.
 
-The Python helper may be used only for legacy v1 Direct/GSD pointers when the Go command cannot write that mode. It is not a Native v2 fallback and must never run after `.agent/ledger/HEAD` exists.
+## Save Direct or Lite
 
-## Save Direct Or GSD State
-
-Resolve the installed `summer-harness` Skill directory, then use its legacy helper only for these pointer modes:
+Until the v3 Go Lite writer is implemented, use the existing helper only for a sequential snapshot:
 
 ```bash
 python3 <summer-skill>/scripts/harnessctl.py --repo <root> handoff \
@@ -31,15 +32,28 @@ python3 <summer-skill>/scripts/harnessctl.py --repo <root> handoff \
   --must-read "<critical file>"
 ```
 
-For GSD, use `--mode gsd --active-artifact .planning/STATE.md`; `.planning/` remains canonical. The public resume path is still this Skill and `.agent/HANDOFF.md`, not `$gsd-resume-work` directly.
+Target Lite invariants are revision CAS,≤4 KiB,≤5 safe `must_read`, one next action while non-terminal, terminal Authorization with no next action, and no parallel Writer. Do not fake these target guarantees if the legacy helper cannot provide them.
 
-## Save Native V2
+The target v3 Handoff also carries the compact canonical current SkillPlan (primary,≤2 supporting SkillRefs, strategy, Evidence/Gate digests and Plan digest). A legacy Direct snapshot has no such guarantee and must not claim route continuity.
 
-Use `summer save`; Handoff is derived from the Canonical Ledger:
+## Save GSD Pointer
+
+Use `mode=gsd` and a `.planning/STATE.md` source pointer. `.planning/` remains Workflow authority; Handoff stores only source path/digest, current WorkRef, next command and bounded summary.
+
+GSD internal pause/resume artifacts are not a second public entry. Do not copy Requirement/Phase/Task state into Handoff.
+
+## Legacy Native
+
+Current Native v2 Handoff is a migration source, not a target backend. Use the Go CLI as the only compatibility writer for already-authorized work:
 
 ```bash
-summer --repo <root> save --done "<result>" --next "<one action>" --validation "<evidence>"
+summer --repo <root> resume
 summer --repo <root> doctor
+summer --repo <root> save --done "<verified result>" --next "<one action>" --validation "<evidence>"
 ```
 
-Keep Handoff below 4 KiB, use no more than five repository-relative `must_read` files, and never store transcripts, chain-of-thought, source copies, secrets, or large diffs.
+The `save` compatibility path is allowed only for work that was already authorized before v3 migration exists, and only when no migration/promotion fence is present. Do not start a new Native lifecycle. Never hand-edit Ledger, HEAD, Snapshot, Handoff or migration archive. Future v3 migration must be dry-run/backup/CAS/tombstone/rollback controlled.
+
+## Content Limits
+
+Never store transcript, chain-of-thought, source copies, secrets, large diffs or raw logs. Keep only the current goal, verified done summary, one next action, blockers, validation, last verified commit and at most five `must_read` pointers.

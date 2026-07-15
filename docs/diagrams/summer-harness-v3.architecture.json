@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Summer Harness v3",
+    "subtitle": "Direct-first · Handoff continuity · GSD-on-demand · trust-centered control plane",
+    "output": "summer-harness-v3.html",
+    "animation": "trace",
+    "viewBox": [1500, 900]
+  },
+  "components": [
+    { "id": "request", "type": "external", "label": "User / Host", "sublabel": "Codex · Claude", "pos": [35, 300], "size": [125, 68] },
+    { "id": "gate", "type": "security", "label": "Activation Gate", "sublabel": "explicit Summer only", "pos": [205, 300], "size": [145, 68] },
+    { "id": "router", "type": "backend", "label": "Lifecycle Router", "sublabel": "Lite or GSD", "pos": [400, 300], "size": [155, 68] },
+    { "id": "direct", "type": "external", "label": "Direct", "sublabel": "zero Summer state", "pos": [595, 70], "size": [165, 64] },
+    { "id": "lite", "type": "backend", "label": "Handoff Lite", "sublabel": "sequential continuity", "pos": [595, 220], "size": [165, 72] },
+    { "id": "gsd", "type": "backend", "label": "Governed GSD", "sublabel": "phase · plan · wave", "pos": [595, 430], "size": [165, 72] },
+    { "id": "handoff", "type": "database", "label": "Unified Handoff", "sublabel": "Lite state · GSD pointer", "pos": [805, 90], "size": [180, 72], "tag": "≤ 4 KiB" },
+    { "id": "skills", "type": "backend", "label": "Capability Router", "sublabel": "stage → 1 + ≤2 skills", "pos": [810, 245], "size": [180, 72] },
+    { "id": "planning", "type": "database", "label": ".planning/", "sublabel": "GSD workflow authority", "pos": [810, 430], "size": [180, 72], "tag": "canonical" },
+    { "id": "coordinator", "type": "security", "label": "Coordinator Guard", "sublabel": "lease · CAS · proposals", "pos": [1040, 430], "size": [185, 72] },
+    { "id": "workers", "type": "cloud", "label": "Fresh Workers", "sublabel": "isolated worktrees", "pos": [1040, 245], "size": [185, 72] },
+    { "id": "git", "type": "external", "label": "Git / CI", "sublabel": "code & remote truth", "pos": [1280, 245], "size": [165, 72] },
+    { "id": "trust", "type": "security", "label": "Trust Kernel", "sublabel": "Evidence · Review · Gate", "pos": [1040, 610], "size": [185, 78] },
+    { "id": "blobs", "type": "database", "label": "Evidence Store", "sublabel": "redacted content-addressed", "pos": [1280, 570], "size": [180, 72] },
+    { "id": "journal", "type": "database", "label": "Trust Journal", "sublabel": "immutable receipts", "pos": [1280, 700], "size": [180, 72] },
+    { "id": "shell", "type": "frontend", "label": "Resume / UI Projection", "sublabel": "capsule · search · graph", "pos": [800, 720], "size": [200, 78], "tag": "on demand" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Summer on-demand control plane", "wraps": ["gate", "router", "lite", "gsd", "skills", "coordinator", "trust", "shell"] },
+    { "kind": "security-group", "label": "single-writer trust boundary", "wraps": ["coordinator", "trust"] }
+  ],
+  "connections": [
+    { "from": "request", "to": "gate", "variant": "emphasis" },
+    { "from": "gate", "to": "direct", "label": "not enabled", "variant": "dashed", "fromSide": "top", "toSide": "left", "route": "orthogonal-v" },
+    { "from": "gate", "to": "router", "variant": "emphasis" },
+    { "from": "router", "to": "lite", "fromSide": "right", "toSide": "left", "route": "orthogonal-v" },
+    { "from": "router", "to": "gsd", "fromSide": "right", "toSide": "left", "route": "orthogonal-v" },
+    { "from": "lite", "to": "handoff", "fromSide": "top", "toSide": "left", "route": "orthogonal-v" },
+    { "from": "gsd", "to": "planning", "variant": "emphasis" },
+    { "from": "lite", "to": "skills" },
+    { "from": "planning", "to": "coordinator", "variant": "security" },
+    { "from": "coordinator", "to": "skills", "fromSide": "top", "toSide": "right", "route": "orthogonal-v" },
+    { "from": "skills", "to": "workers", "variant": "emphasis" },
+    { "from": "workers", "to": "git" },
+    { "from": "workers", "to": "trust", "fromSide": "bottom", "toSide": "top", "route": "orthogonal-v" },
+    { "from": "git", "to": "trust", "fromSide": "bottom", "toSide": "right", "route": "orthogonal-v" },
+    { "from": "trust", "to": "blobs" },
+    { "from": "trust", "to": "journal", "variant": "security" },
+    { "from": "handoff", "to": "shell", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "orthogonal-v" },
+    { "from": "planning", "to": "shell", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "orthogonal-v" },
+    { "from": "journal", "to": "shell", "variant": "dashed", "fromSide": "left", "toSide": "right" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Lifecycle", "items": ["Default is Direct", "Lite is sequential only", "Parallel or phase graph routes to GSD"] },
+    { "dot": "cyan", "title": "One owner per fact", "items": ["Git owns code", ".planning owns heavy workflow", "Trust Journal owns evidence receipts"] },
+    { "dot": "violet", "title": "Borrowed, not copied", "items": ["GSD workflow", "Missions coverage matrix", "Harness Anything trust semantics", "Matt narrow skills"] }
+  ]
+}

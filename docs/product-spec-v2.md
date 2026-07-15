@@ -1,4 +1,11 @@
+---
+status: superseded
+superseded_by: product-spec-v3.md
+---
+
 # Summer Harness v2 产品规格
+
+> 历史产品契约：用于描述当前 Native v2 开发预览和迁移来源。目标产品规格见 [product-spec-v3.md](product-spec-v3.md)。
 
 状态：已接受。用户要求采用推荐方案并持续迭代；尚未发布的选择仍可通过新 Decision 修订。
 

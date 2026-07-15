@@ -1,4 +1,11 @@
+---
+status: superseded
+superseded_by: data-model-v3.md
+---
+
 # Summer Harness v2 Data Model
+
+> 历史序列化契约：Root Objective、WorkItem 和 `mode=native` 只用于兼容读取与 Native v2→v3 迁移。目标模型见 [data-model-v3.md](data-model-v3.md)。
 
 本文件描述 v2 实现契约。`CONTEXT.md` 定义领域语言；这里定义可序列化形状、约束和状态转换。
 

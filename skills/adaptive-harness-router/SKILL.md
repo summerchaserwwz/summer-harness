@@ -1,28 +1,30 @@
 ---
 name: adaptive-harness-router
-description: Compatibility-only router for explaining or migrating older Harness setups into Direct, Project Handoff, Summer native, or GSD ownership. Use only when the user explicitly asks which route to choose or needs migration from an older router; it never auto-activates Harness and is not part of the default installed surface.
+description: Compatibility-only router for explaining Direct, Handoff Lite, Governed GSD, or migrating legacy Native setups. Use only when explicitly asked about routing or migration; never auto-activate Summer.
 ---
 
 # Adaptive Harness Router
 
-Return one route and one reason. Do not initialize files.
+This compatibility Skill explains one route and one reason. It does not initialize files and is not part of the default installed surface.
 
 1. Default to `Direct`.
-2. Use `Direct + Skill` for one explicitly useful specialist capability.
-3. Use `Direct + Handoff` when persistence across sessions is the only durable need.
-4. Use `Summer native` only after explicit Harness authorization.
-5. Use `GSD backend` only after explicit Harness/GSD authorization for genuinely multi-phase fresh-context work.
+2. Treat a narrow Skill as a Direct capability overlay, not a lifecycle.
+3. Use `Handoff Lite` only for one sequential workflow that needs cross-session continuity.
+4. Use `Governed GSD` for Phase/Wave/DAG, multiple Agents, multiple active Sessions, or explicit GSD intent.
+5. If existing state is Native v1/v2, return `Legacy Native -> explicit migration`; never route new work into Native.
 
-State must have one owner:
+Authority:
 
-- Direct: none, or `.agent/HANDOFF.md` only.
-- Summer native: `.agent/ledger/` canonical; Handoff derived.
-- GSD: `.planning/` canonical; Handoff pointer only.
+- Direct: none.
+- Handoff Lite: `.agent/HANDOFF.md`.
+- Governed GSD: `.planning/`; Handoff is pointer only.
+- Legacy Native: `.agent/ledger/` is read-only migration source after v3 switch.
 
-Do not route through `ask-matt`, Superpowers, Super Dev, old Coding Agent Harness, or Stellarlink Harness. Matt is a capability collection, not a lifecycle. gstack is invoked only when the user explicitly names a concrete Skill; its own sessions or telemetry are never Summer state.
+Do not route through `ask-matt`, Superpowers, Super Dev, old Coding Agent Harness or Stellarlink. Skill/GUI/Worker cannot become an Authority.
 
 ```text
-Route: <Direct | Direct + Skill | Direct + Handoff | Summer native | GSD backend>
+Route: <Direct | Handoff Lite | Governed GSD | Legacy Native migration>
 Reason: <one sentence>
-Persistent state: <none | .agent/HANDOFF.md | .agent/ledger | .planning>
+Authority: <none | .agent/HANDOFF.md | .planning | legacy .agent/ledger>
+Hard trigger: <none | parallel_agents | multiple_active_sessions | phase_graph | dependency_wave | explicit_gsd | legacy_native>
 ```

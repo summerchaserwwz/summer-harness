@@ -1,37 +1,52 @@
 # Summer Harness Architecture
 
-本文是稳定导航入口。当前权威架构是 [architecture-v2.md](architecture-v2.md)；早期 Task + Handoff 两文件 WAL 属于 v1 legacy，不再描述当前写入模型。
+本文是稳定导航入口。当前权威目标架构是 [architecture-v3.md](architecture-v3.md)。
+
+Native v2 的 transaction ledger、Root Objective 和 WorkItem 模型已进入兼容期；历史契约保留在 [architecture-v2.md](architecture-v2.md)，用于读取、审计和显式迁移，不能作为新工作流的设计依据。
 
 ## 一句话架构
 
 ```text
-Direct（默认，零状态）
+Direct（默认，零 Summer 状态）
   |
-  +-- 只需跨 Session --> .agent/HANDOFF.md
+  +-- 顺序跨 Session --> Handoff Lite (.agent/HANDOFF.md)
   |
-  +-- 显式 Summer -----> Go Engine -> .agent/ledger transaction chain
-  |                                      +-> bounded Handoff/Snapshot
-  |                                      +-> optional SQLite/GUI projection
-  |
-  +-- 显式 GSD --------> .planning/ canonical -> pointer Handoff
+  +-- Phase/Wave/DAG、多 Agent、多活跃 Session
+                          |
+                          v
+                  Governed GSD (.planning/)
+                          |
+                          v
+         Capability Router + Coordinator Guard
+                          |
+                          v
+ Evidence -> Execution -> Review -> GateReceipt -> CompletionAuthorization
+                          |
+                          v
+              Handoff / Resume / on-demand GUI
 ```
 
-Native v2 的 Canonical Ledger 是 append-only committed transaction chain。Handoff、Snapshot、未来 SQLite、Graph 和 GUI 都是可验证或可重建的 Projection；Git 提供额外历史，但不承担运行时原子性。
+Summer 不再为新工作创建 Native Phase/WorkItem Workflow。它把重型 Workflow 交给 GSD，把自身复杂度集中在统一恢复、阶段能力路由、本地并发一致性和可信交付。
 
-## 轻量边界
+## 权威边界
 
-- 普通请求不初始化 Harness，不扫描仓库，不启动 daemon。
-- `AGENTS.md` 是唯一常驻路由；Adaptive Router 只保留作旧配置兼容。
-- Matt Skills 是能力插件，不是第二生命周期。
-- gstack 只在用户显式点名具体 Skill 时调用，其状态不进入 Summer Ledger。
-- GSD 只有成为 lifecycle owner 时才能写 `.planning/`；Summer Native owner 不调用 GSD 状态型流程。
-- `summer ui` 才按需加载 GUI、Watcher、SQLite 和关系图，关闭后不影响 CLI 与恢复。
+- Git：代码、commit、tree。
+- `.agent/HANDOFF.md`：Lite 当前工作集；GSD 模式下只是 pointer/digest。
+- `.planning/`：GSD Requirement、Phase、Plan、Wave、Task。
+- Summer Trust Journal：immutable Evidence、Execution、Review、GateReceipt 和 provenance。
+- private Evidence Store：redacted raw logs 与 Artifact。
+- SQLite/FTS/Graph/GUI：可删除重建的 Projection。
+
+一类事实只能有一个正式 Writer。
 
 ## 设计索引
 
-- 完整模块、Ledger、Failure Recovery、GUI read path：[architecture-v2.md](architecture-v2.md)
-- 产品目标、性能预算、GUI 与多 Agent 体验：[product-spec-v2.md](product-spec-v2.md)
-- 事件与领域模型：[data-model-v2.md](data-model-v2.md)
-- 安全与信任边界：[threat-model.md](threat-model.md)
-- 关键架构决策：[adr/](adr/)
-- 交付顺序与 Release Gate：[roadmap.md](roadmap.md)
+- [v3 系统架构](architecture-v3.md)
+- [v3 产品规格](product-spec-v3.md)
+- [v3 数据模型](data-model-v3.md)
+- [领域语言](../CONTEXT.md)
+- [威胁模型](threat-model.md)
+- [交付 Roadmap](roadmap.md)
+- [ADR](adr/)
+- [可交互架构图](diagrams/summer-harness-v3.html)
+- [Native v2 历史架构](architecture-v2.md)
