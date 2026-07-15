@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Summer Harness v3 工作流架构",
+    "subtitle": "Direct-first、显式启用、Lite/GSD 路由、按阶段选 Skill 与可信交付",
+    "output": "docs/diagrams/summer-harness-v3-workflow.html",
+    "viewBox": [760, 860]
+  },
+  "lanes": [
+    { "id": "user", "label": "用户与宿主" },
+    { "id": "control", "label": "控制与能力路由" },
+    { "id": "workflow", "label": "Workflow Authority" },
+    { "id": "execution", "label": "执行平面" },
+    { "id": "trust", "label": "可信交付" },
+    { "id": "continuity", "label": "连续性与恢复" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "请求与授权", "fromCol": 0, "toCol": 1 },
+    { "id": "routing", "label": "Direct 或 Harness 路由", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "delivery", "label": "执行、验证与恢复", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "bounded_restore", "label": "恢复输入有界", "lane": "continuity", "fromCol": 3, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["request", "activation", "lifecycle", "workflow_choice", "capability", "execute", "trust_gate", "result"],
+  "nodes": [
+    { "id": "request", "lane": "user", "col": 0, "type": "external", "label": "提出请求", "sublabel": "默认 Direct" },
+    { "id": "activation", "lane": "user", "col": 1, "type": "security", "label": "是否显式启用？", "sublabel": "复杂度只能建议", "tag": "Activation Gate" },
+    { "id": "direct", "lane": "user", "col": 3, "type": "external", "label": "Direct 执行", "sublabel": "零 Summer 状态", "tag": "可按需用窄 Skill" },
+    { "id": "result", "lane": "user", "col": 5, "type": "backend", "label": "交付结果", "sublabel": "或唯一下一步" },
+
+    { "id": "lifecycle", "lane": "control", "col": 2, "type": "backend", "label": "生命周期路由", "sublabel": "Handoff Lite / GSD" },
+    { "id": "capability", "lane": "control", "col": 4, "type": "backend", "label": "能力路由", "sublabel": "1 primary + 2 support", "tag": "按阶段选择" },
+
+    { "id": "workflow_choice", "lane": "workflow", "col": 3, "type": "database", "label": "持久工作流", "sublabel": "Handoff / .planning", "tag": "唯一 Authority" },
+
+    { "id": "execute", "lane": "execution", "col": 4, "type": "messagebus", "label": "执行工作", "sublabel": "Host / Workers", "tag": "Coordinator 串行提交" },
+
+    { "id": "trust_gate", "lane": "trust", "col": 5, "type": "security", "label": "可信门禁", "sublabel": "Evidence / Review / Gate", "tag": "Fail closed" },
+
+    { "id": "handoff", "lane": "continuity", "col": 3, "type": "database", "label": "唯一 Handoff", "sublabel": "≤4 KiB · must_read≤5", "tag": "Capsule≤32 KiB" }
+  ],
+  "edges": [
+    { "from": "request", "to": "activation", "variant": "default" },
+    { "from": "activation", "to": "direct", "label": "未启用", "variant": "default" },
+    { "from": "direct", "to": "result", "variant": "default" },
+    { "from": "activation", "to": "lifecycle", "label": "显式启用", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelAt": [260, 167] },
+    { "from": "lifecycle", "to": "workflow_choice", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "workflow_choice", "to": "capability", "variant": "emphasis", "fromSide": "top", "toSide": "bottom", "route": "up-channel" },
+    { "from": "capability", "to": "execute", "variant": "default", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "execute", "to": "trust_gate", "label": "Artifact + Evidence", "variant": "security", "fromSide": "right", "toSide": "left", "route": "auto", "labelAt": [563, 539] },
+    { "from": "trust_gate", "to": "result", "variant": "emphasis", "role": "return", "fromSide": "right", "toSide": "right", "route": "outside-right", "width": 1.2 },
+    { "from": "workflow_choice", "to": "handoff", "variant": "dashed", "role": "async", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "handoff", "to": "capability", "label": "跨 Session 恢复", "variant": "dashed", "role": "return", "fromSide": "right", "toSide": "right", "route": "outside-right", "labelSegment": 1 }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "三条路径",
+      "items": [
+        "Direct：默认，零 Summer 状态",
+        "Handoff Lite：单工作流、顺序跨 Session",
+        "Governed GSD：Phase/Wave/DAG、多 Agent"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "一类事实一个 Owner",
+      "items": [
+        "Git 拥有代码与 tree",
+        "Handoff 或 .planning 拥有 Workflow",
+        "Trust Journal 只拥有可信交付记录"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "取长补短，不复制重型系统",
+      "items": [
+        "GSD：阶段化与 fresh context",
+        "Missions：Claim Coverage",
+        "Harness Anything：immutable records 与 Gate",
+        "Matt Skills：窄能力按需调用"
+      ]
+    }
+  ]
+}
