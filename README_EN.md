@@ -6,14 +6,48 @@
 [![License](https://img.shields.io/badge/License-Apache--2.0-34d399)](LICENSE)
 [![Status](https://img.shields.io/badge/status-v0.1.0--dev-f59e0b)](docs/roadmap.md)
 
-**Summer Harness v3 is an explicitly activated, local-first, GSD-backed, trust-centered control plane for coding agents.**
+## In plain English: what is this?
 
-Small tasks remain Direct. A single sequential workflow can cross sessions through one lightweight Handoff. Phase/Wave/DAG work, multiple agents, or multiple active sessions belong in GSD. Summer adds only capability routing, consistency boundaries, trusted delivery, and bounded recovery.
+**Summer Harness is a lightweight operating discipline, relay baton, and acceptance system around a coding agent.**
 
-It is not a model, a prompt bundle, a general issue tracker, a worker scheduler, or a second implementation of GSD.
+The model is the brain. Codex or Claude Code gives it a terminal and tools. A Skill teaches a specialized method such as TDD or debugging. GSD manages phases and plans for a large project. Summer decides when any of that machinery is needed, preserves a reliable recovery point, prevents multiple agents from fighting over project state, and asks for real proof before accepting “done.”
+
+A coding harness does not make the model magically smarter. It makes long-running agent work less forgetful, less contradictory, and less likely to claim completion prematurely—without slowing down ordinary tasks.
+
+Remember five rules:
+
+1. Ordinary tasks stay Direct; Summer does not start.
+2. If the only need is another session, save one Handoff.
+3. Phase/Wave/DAG or multi-agent work goes to GSD.
+4. Each stage loads only the Skills it needs.
+5. Completion requires evidence, not agent confidence.
 
 > [!IMPORTANT]
-> Summer Harness is currently a **`v0.1.0-dev` development preview / v3 architecture freeze**. GitHub HEAD implements Native v2 continuity, CAS, a transaction digest chain, recovery, and v1-to-v2 migration; those features are now legacy compatibility. M2 machine Evidence is in development but is not part of the current public HEAD or installable build. The Handoff Lite Go writer, Governed GSD Adapter, Capability Router, Trust Gate, GUI, Host Adapter, and installers remain roadmap work.
+> Summer Harness is currently a **`v0.1.0-dev` development preview**. GitHub HEAD implements Native v2 continuity, conflict protection, recovery, and v1-to-v2 migration, but Native is now a compatibility surface. The text below describes the frozen v3 target architecture. Automatic routing, the production Handoff Lite writer, the Governed GSD Adapter, trusted completion, and the GUI are still being delivered milestone by milestone.
+
+## The problem it solves
+
+| Real problem | Typical symptom | Summer's answer |
+|---|---|---|
+| Heavy process slows down small work | A one-line fix starts with plans, state files, and rituals | Direct-first; Summer remains completely off unless explicitly requested |
+| Context quality decays | The agent forgets constraints, rereads everything, or contradicts itself | bounded Handoff plus fresh context at heavy-workflow boundaries |
+| A new session cannot continue reliably | It must reconstruct state from chat and repository guesses | one public `.agent/HANDOFF.md` containing the current result and next action |
+| Too many Skills compete for control | GSD, TDD, debugging, review, and routers all try to own the workflow | lifecycle routing and capability routing are separate; load only the current Skills |
+| Multiple agents create split-brain state | Workers edit the same plan and all claim to be finished | workers parallelize code; one Coordinator serializes authoritative state |
+| “Done” is only prose | “Tests should pass” is accepted without a real run | evidence, review, code version, and claim scope are bound together |
+
+## How to use it in 30 seconds
+
+| Situation | What to say or invoke | Result |
+|---|---|---|
+| Q&A, research, review, a small fix, routine development | just ask normally | Direct; no Summer state |
+| A specialized method is needed | invoke `$tdd`, `$diagnosing-bugs`, `$code-review`, and so on | still Direct; one narrow capability is overlaid |
+| “Stop here and continue next session” | say “save a handoff” or invoke `$project-handoff` | update one `.agent/HANDOFF.md`; do not start the full Harness |
+| One sequential goal spans sessions | explicitly request Summer Harness | target Handoff Lite; use `$project-handoff` during the transition |
+| Phase/Wave/DAG, multiple agents, or multiple active sessions | request GSD or Summer Harness | GSD owns `.planning/` as the sole workflow source |
+| Continue existing work in a new session | ask to resume | read `AGENTS.md`, `git status`, and the one Handoff before loading current-stage context |
+
+Do not use `summer start` to create a new Native v2 project. The current Go CLI is primarily a compatibility and migration surface for existing Native projects.
 
 ## Architecture at a glance
 
@@ -65,6 +99,43 @@ Routing rules:
 - Multiple agents, multiple active sessions, Phase, Wave, or DAG are hard triggers for GSD.
 - Lite can be explicitly promoted to GSD. Lite and GSD must never remain writable at the same time, and GSD cannot silently fall back to Lite.
 - Risk is not workflow size. A small high-risk sequential task may remain Lite while using stricter Evidence, Review, and Gates.
+
+## How it works with `AGENTS.md`
+
+`AGENTS.md` and Summer are complementary, not competing systems.
+
+- **`AGENTS.md` is the always-on traffic code.** Every session reads it, so it contains only stable, low-cost rules: Direct-first, explicit activation, when to use Handoff or GSD, who may write authoritative state, and basic safety constraints.
+- **Summer is the on-demand runtime mechanism.** It selects Lite/GSD, coordinates work, routes stage capabilities, and evaluates delivery only after activation.
+- **Handoff is the relay baton.** It is loaded only when work must cross sessions.
+- **GSD is the heavy workflow owner.** Its `.planning/` directory owns phases, plans, waves, and tasks.
+- **Skills are tools.** They help perform the current activity but cannot own lifecycle state.
+- **Git and CI provide facts.** They own code history and executable verification.
+
+Putting the full GSD process, every Skill, Evidence schema, Gate policy, and architectural rationale into `AGENTS.md` would force every small request to load thousands of irrelevant tokens. The design therefore keeps the always-on rules small and loads the rest only when needed.
+
+[`config/AGENTS.md`](config/AGENTS.md) is this repository's single maintained instruction source. The root `AGENTS.md` only points to it so the rules cannot drift into two versions.
+
+## Why this design—and how it differs
+
+- **Direct-first** keeps startup fast and makes small tasks feel like normal Codex work.
+- **Explicit activation** prevents the agent from expanding scope or creating workflow state without user intent.
+- **Separate lifecycle and capability routing** prevents `ask-matt`, GSD, and other Skill routers from becoming competing project owners.
+- **GSD as the heavy backend** avoids reinventing phases, plans, waves, and fresh-context execution.
+- **One public Handoff** gives every new session one unambiguous recovery entry.
+- **Parallel code, serialized authority** allows worker speed without split-brain project state.
+- **Evidence-first completion** makes tests and reviews expire when the code or workflow changes.
+- **On-demand projections** keep the future GUI and database useful without making them another source of truth.
+
+| System | Its strongest role | Difference from Summer |
+|---|---|---|
+| **Superpowers** | a full brainstorming/planning/TDD/review discipline | Summer is off by default and imports narrow capabilities instead of forcing the whole ritual onto small work |
+| [GSD](https://github.com/open-gsd/gsd-core) | decomposing large goals into Phase/Plan/Wave work with fresh context | Summer uses GSD as its heavy workflow backend instead of copying it |
+| [Matt Skills](https://github.com/mattpocock/skills) | small debugging, TDD, modeling, and review capabilities; `ask-matt` routes within that toolbox | they do not own cross-session workflow, multi-agent authority, or trusted completion; Summer selects the concrete Skill directly |
+| [Missions](https://github.com/flowing-water1/Missions) | Claim Coverage, proof scope, production wiring, independent review | Summer borrows the verification model but does not make CSV its authority |
+| [Harness Anything](https://github.com/FairladyZ625/harness-anything) | provenance, immutable records, completion gates, graphs, rebuildable projections | Summer borrows the trust ideas but lets Direct bypass governance entirely; HA is also governance, not a worker scheduler |
+| **gstack** | role-oriented product, design, QA, security, and release Skills | Summer uses a named Skill only when requested and does not adopt gstack session/checkpoint state |
+
+The division of responsibility is simple: **GSD decomposes heavy work; Matt/gstack Skills help perform a stage; the Host runs models and workers; Git/CI provides facts; Summer decides when to activate, where to resume, how agents stay consistent, and what counts as completed.**
 
 ## Five-layer architecture
 

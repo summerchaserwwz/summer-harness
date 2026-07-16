@@ -6,14 +6,179 @@
 [![License](https://img.shields.io/badge/License-Apache--2.0-34d399)](LICENSE)
 [![Status](https://img.shields.io/badge/status-v0.1.0--dev-f59e0b)](docs/roadmap.md)
 
-**Summer Harness v3 是一套显式启用、local-first、GSD-backed、trust-centered 的 Coding Agent 控制面。**
+## 先说人话：这到底是什么
 
-简单任务保持 Direct；单工作流跨 Session 使用一个轻量 Handoff；Phase、Wave、DAG、多 Agent 或多个活跃 Session 交给 GSD；Summer 只补充能力路由、一致性保护、可信交付和有界恢复。
+**Summer Harness 是给 Coding Agent 配的一套“工作纪律 + 项目接力棒 + 验收机制”。**
 
-它不是模型、Prompt 大礼包、通用项目管理器、Worker 调度器，也不是第二套 GSD。
+模型本身只是大脑。它能写代码，但聊天会变长、记忆会丢、多个 Agent 会互相覆盖，而且它很容易在没有充分验证时说“已经完成”。Harness 就是包在模型外面的工作系统，负责回答这些问题：
+
+- 这个任务要不要进入正式流程？
+- 是直接做，还是需要保存进度，还是要拆成多阶段项目？
+- 当前阶段应该调用哪个 Skill，而不是一次加载所有方法论？
+- 换一个 Session 后，从哪里继续，唯一下一步是什么？
+- 多个 Agent 同时工作时，谁可以修改计划和最终状态？
+- Agent 说“完成”时，有没有测试、Review 和真实结果支持？
+
+如果把 Coding Agent 比作一名工程师：
+
+| 部件 | 人话解释 |
+|---|---|
+| 模型 | 工程师的大脑 |
+| Codex / Claude Code | 工程师的电脑、终端和双手 |
+| Skill | TDD、Debug、Review 等专项工具或工作方法 |
+| GSD | 复杂项目的项目经理和阶段计划 |
+| Handoff | 下班或换人时留下的接力棒 |
+| Summer Harness | 决定何时启用上述能力，并保护记忆、一致性和验收的工作系统 |
+
+Summer 不会让模型突然变聪明。它的价值是让模型在长项目、多 Agent 和多 Session 中**少忘事、少冲突、少假完成**，同时不拖慢简单任务。
+
+只记住下面五句话就够了：
+
+1. 普通任务直接做，不启动 Harness。
+2. 只想下个 Session 接着做，就保存一个 Handoff。
+3. 任务需要分阶段、并行或多 Agent，就进入 GSD。
+4. 每个阶段只选最需要的 Skill，不加载技能大礼包。
+5. “完成”要看真实证据，不只听 Agent 自己说。
 
 > [!IMPORTANT]
-> 当前仓库是 **`v0.1.0-dev` 开发预览 / v3 architecture freeze**。GitHub HEAD 已交付 Native v2 continuity、CAS、digest chain、恢复和 v1→v2 migration；这些能力现已进入 legacy compatibility。M2 Machine Evidence 正在开发，但不属于当前公开 HEAD 或可安装版本；Handoff Lite Go writer、Governed GSD Adapter、Capability Router、Trust Gate、GUI、Host Adapter 和安装器属于 Roadmap，尚未作为稳定产品发布。
+> 当前仓库是 **`v0.1.0-dev` 开发预览**。GitHub HEAD 已实现 Native v2 的连续性、冲突保护、恢复和 v1→v2 migration，但这些已经进入兼容期。上面描述的是已经固化的 v3 目标架构；自动路由、正式 Handoff Lite、Governed GSD Adapter、可信完成和 GUI 仍按 Roadmap 逐步交付。本文会明确区分“现在能用”和“目标设计”。
+
+## 它主要解决什么问题
+
+| 实际问题 | 你会看到的症状 | Summer 的处理方式 |
+|---|---|---|
+| 简单任务被重流程拖慢 | 改一行代码也先写计划、建目录、跑一套仪式 | 默认 Direct；除非你明确要求，否则 Summer 完全不启动 |
+| 对话越来越长，质量下降 | Agent 忘记前面的约束，重复读文件，开始自相矛盾 | 只保存有界 Handoff；重型阶段使用 fresh context，不重放整段聊天 |
+| 跨 Session 接不上 | 新窗口不知道做到哪，只能重新扫描仓库和聊天 | `.agent/HANDOFF.md` 是唯一公开恢复入口，只保留已完成、阻塞和唯一下一步 |
+| Skill 太多，不知道用哪个 | `ask-matt`、TDD、Debug、Review、GSD 都在抢着接管流程 | 生命周期和 Skill 选择分开；每个阶段只选 1 个主 Skill，最多 2 个辅助 Skill |
+| 多 Agent 相互覆盖 | 两个 Worker 同时改计划、状态和同一批文件 | Worker 可以并行写代码，但只有 Coordinator 能推进计划、Handoff 和验收状态 |
+| Agent 过早宣布完成 | “测试应该通过”“看起来没问题”被当成完成证据 | 测试结果、代码版本、Review 和交付范围绑定；证据过期就重新验证 |
+| 工具越来越重 | GUI、数据库、关系图反过来变成另一套真相 | GUI 和数据库只做可删除视图，真正状态仍由 Git、Handoff 或 GSD 持有 |
+
+这套设计追求的不是“功能最多”，而是：**简单任务几乎零成本，复杂任务才逐步增加纪律。**
+
+## 30 秒决定怎么用
+
+| 你的情况 | 你需要说什么 | 实际发生什么 |
+|---|---|---|
+| 问问题、做研究、Review、小修复、普通开发 | 正常提出要求即可 | 走 Direct，不创建 Summer 状态 |
+| 需要某个专项能力 | 可以点名 `$tdd`、`$diagnosing-bugs`、`$code-review` 等 | 仍是 Direct，只临时叠加这个 Skill |
+| “今天先到这，下个 Session 继续” | 说“保存交接”或调用 `$project-handoff` | 只更新一个 `.agent/HANDOFF.md`，不会启动完整 Harness |
+| 一个顺序目标，但要跨多个 Session | 明确说“使用 Summer Harness” | 目标上进入 Handoff Lite；当前过渡期使用 `$project-handoff` |
+| 有 Phase、Wave、依赖图、多 Agent 或多个活跃 Session | 说“使用 GSD”或“使用 Summer Harness” | 进入 GSD；`.planning/` 是唯一项目计划来源 |
+| 新窗口继续已有工作 | 说“恢复工作” | 先读 `AGENTS.md`、`git status` 和唯一 Handoff，再加载当前阶段必需内容 |
+
+目前不要用 `summer start` 创建新的 Native v2 项目。当前 Go CLI 主要用于已有 Native 项目的兼容恢复和迁移；详见后面的“现在应该怎么使用”和“当前 CLI 表面”。
+
+## 它怎样和 `AGENTS.md` 配合
+
+是的，Summer 必须和项目的 `AGENTS.md` 配合，但两者不是重复关系。
+
+### `AGENTS.md` 是常驻交通规则
+
+Agent 每次进入仓库都会读它，所以它必须短、稳定、低成本。它负责规定：
+
+- 默认 Direct-first；
+- 只有用户明确要求才启用 Summer；
+- 保存交接只调用 `$project-handoff`；
+- 多 Agent 或 Phase/Wave/DAG 必须进入 GSD；
+- 谁能写 `.planning/`、Handoff 和验收状态；
+- 基本安全边界，例如不覆盖 `.env`、不擅自发布。
+
+### Summer 是按需启动的运行机制
+
+只有明确启用后，Summer 才负责选择 Lite/GSD、记录当前工作、协调多 Agent、选择阶段 Skill，以及检查交付证据。
+
+### 为什么不把所有内容都写进 `AGENTS.md`
+
+因为 `AGENTS.md` 每个 Session 都会进入上下文。如果把完整 GSD、所有 Skills、Evidence schema、Gate 规则和架构原理全部塞进去，简单任务还没开始就先加载几千行说明，这正是我们要消除的“重”。
+
+正确分工是：
+
+| 层 | 负责什么 | 是否每次加载 |
+|---|---|---|
+| `AGENTS.md` | 最小路由、安全和权限规则 | 是 |
+| `$project-handoff` | 单工作流跨 Session 接力 | 需要交接或恢复时 |
+| GSD `.planning/` | 重型项目的需求、阶段、计划和任务 | 进入当前 GSD 阶段时 |
+| Capability Skills | Debug、TDD、建模、Review 等专项能力 | 当前阶段需要时 |
+| Summer Trust | Evidence、Review、Gate 和完成授权 | 需要可信验收时 |
+
+```text
+进入仓库
+  → 读取 AGENTS.md：知道默认规则
+  → 普通任务：直接做
+  → 用户只要求交接：保存一个 Handoff
+  → 用户启用 Summer：在 Lite / GSD 中选一个
+  → 当前阶段再按需选择 Skill
+  → 用真实验证决定能不能完成
+```
+
+仓库中的 [`config/AGENTS.md`](config/AGENTS.md) 是这套规则的单一维护源。根目录 `AGENTS.md` 只负责指向它，避免两份规则逐渐不一致。
+
+## 为什么要这样设计
+
+### 1. Direct-first：为了启动快
+
+多数请求不需要项目管理系统。默认不创建文件、不扫描全仓、不启动后台进程，才能让小任务保持和普通 Codex 一样快。
+
+### 2. 显式启用：为了不让工具替用户扩大流程
+
+Agent 可以提醒“这个任务可能适合 Harness”，但不能因为觉得任务复杂就自动创建状态、拆阶段或启动一堆 Worker。是否进入 Harness 由用户决定。
+
+### 3. 生命周期路由和 Skill 路由分开：为了避免双重路由
+
+“任务应该 Direct、Lite 还是 GSD”和“当前阶段该用 TDD、Debug 还是 Review”是两个问题。`ask-matt` 可以在 Matt Skills 内选工具，但它不知道 Summer 的 Handoff、GSD Authority、多 Agent lease 或可信完成，因此不能作为第二个总路由器。
+
+### 4. 重型项目交给 GSD：为了不重复造项目管理器
+
+GSD 已经擅长需求澄清、Phase、Plan、Wave、fresh-context execution。Summer 不再复制一套 Task/Phase 系统，而是让 `.planning/` 继续拥有项目计划，自己只补充协调、Skill 选择、恢复入口和可信验收。
+
+### 5. 只有一个 Handoff：为了让恢复没有歧义
+
+聊天摘要、GSD 状态、Agent 记忆和多个 handoff 文件如果都声称“从我这里恢复”，新 Session 只能猜。Summer 规定 `.agent/HANDOFF.md` 是唯一公开入口；重型模式下它只指向 `.planning/` 当前阶段，不复制整份计划。
+
+### 6. 并行写代码、串行写状态：为了防止多 Agent 分裂
+
+多个 Worker 可以同时实现不同模块，但不能同时宣布任务完成或修改同一份计划。只有 Coordinator 接收并重新检查 Worker 的结果后，才能推进权威状态。
+
+### 7. 有界恢复和 fresh context：为了对抗上下文腐烂
+
+Summer 不把完整聊天当长期记忆。Handoff 只保留恢复真正需要的内容，Worker 只收到当前 Assignment，GSD 在阶段边界开启新上下文，大日志留在证据存储而不是塞进 Prompt。
+
+### 8. Evidence-first：为了防止“嘴上完成”
+
+Agent 写一句“测试通过”不算机器证据。验证必须绑定实际命令、当前代码版本和它能证明的范围；代码变了，旧结果就过期。
+
+### 9. GUI 按需加载：为了不让产品壳变成本体
+
+关系图和面板很有用，但它们不应该拖慢 Direct，也不应该成为第二套状态。未来只有运行 `summer ui` 时才加载 GUI 和查询数据库，删掉数据库也能从真实来源重建。
+
+## 和其他 Harness 到底有什么区别
+
+这些项目不是简单的“谁更强”，而是在解决不同层的问题。
+
+| 方案 | 它最擅长什么 | 单独使用时缺什么 | Summer 如何处理 |
+|---|---|---|---|
+| **Superpowers** | Brainstorm、计划、TDD、Review 等完整编码仪式 | 很多小任务也会进入较完整流程；长期状态和多 Agent Authority 不是核心 | 不作为默认流程；需要的 TDD/Review 能力用窄 Skill 按需调用 |
+| [GSD](https://github.com/open-gsd/gsd-core) | 把复杂目标拆成 Phase/Plan/Wave，并用 fresh context 执行 | 不负责所有 Direct 请求的外层启用规则，也不是通用 Evidence/Authority 控制面 | 直接作为重型 Workflow 后端，不复制它 |
+| [Matt Skills](https://github.com/mattpocock/skills) | 小而专的 Debug、TDD、建模、Review 能力；`ask-matt` 能在其内部路由 | 不保存跨 Session 项目状态，不管理 GSD/Lite 切换，也不解决多 Agent 一致性和可信完成 | 作为 Capability 层直接选择具体 Skill，不再套一层 `ask-matt` 总路由 |
+| [Missions](https://github.com/flowing-water1/Missions) | 强调 Claim Coverage、验证范围、production wiring 和独立 Review | 其 CSV/路由方式不适合作为 Summer 的唯一项目真相 | 吸收“声明必须被证据覆盖”的思想，不让 CSV 成为 Authority |
+| [Harness Anything](https://github.com/FairladyZ625/harness-anything) | provenance、不可变记录、完成门禁、关系图和可重建投影 | 对小任务流程和概念偏重；它是治理/问责层，不是 Worker 调度器 | 只吸收 Evidence、Gate、provenance 和 projection；Direct 完全绕过治理层 |
+| **gstack** | 产品、设计、QA、安全、发布等角色化 Skills | 角色和流程很多，容易和主 Workflow 重叠 | 只有用户点名具体 Skill 时才使用，不让其 session/checkpoint 成为 Summer 状态 |
+
+一句话分工：
+
+> **GSD 管复杂项目怎么拆，Matt/gstack Skills 管当前步骤怎么做，Host 管模型和 Worker 怎么运行，Git/CI 提供事实，Summer 管何时启用、从哪里恢复、多人如何不打架，以及凭什么算完成。**
+
+这也是 Summer 相比“把多个 Harness 全装上”的主要优势：
+
+- **轻**：普通任务零 Summer 状态；
+- **快**：不默认加载 GSD、GUI、数据库和大套 Skills；
+- **能持续**：一个 Handoff + 有界恢复，不依赖聊天记忆；
+- **能扩展**：重型任务复用 GSD，不限制 Host 和模型；
+- **多 Agent 一致**：Worker 并行，权威状态单写；
+- **验收更可信**：完成绑定当前代码、证据、Review 和规则；
+- **不锁死生态**：Skill、GSD、GUI 都可以替换，但不能抢走各自不该拥有的状态。
 
 ## 架构总览
 
@@ -23,48 +188,25 @@
 
 [查看/下载交互式 Archify HTML 源文件（下载后本地打开）](docs/diagrams/summer-harness-v3-workflow.html) · [查看图表源 JSON](docs/diagrams/summer-harness-v3-workflow.workflow.json)
 
-主流程只有一条：
-
 ```text
 用户请求
-  → Activation Gate：未显式启用 → Direct → 交付
-  → 显式启用 Summer → Lifecycle Router：Handoff Lite / Governed GSD
-  → Capability Router：按当前阶段选择最小 SkillPlan
+  → 未显式启用：Direct → 交付
+  → 显式启用 Summer：Handoff Lite / Governed GSD 二选一
+  → 当前阶段按需选择 Skill
   → Host / Workers 执行真实工作
-  → Evidence → Review → Gate
-  → 交付结果，或保存唯一 Handoff 后有界恢复
+  → Evidence + Review + Gate 决定能否完成
+  → 需要跨 Session 时只从唯一 Handoff 恢复
 ```
 
-## 为什么需要它
+## 三条使用路径
 
-Coding Agent 通常不缺更多 Prompt，真正缺少的是几个工程边界：
+| 路径 | 人话解释 | 谁保存进度 |
+|---|---|---|
+| **Direct** | 直接让 Agent 做，不启动 Summer | 不保存 Summer 状态 |
+| **Handoff Lite** | 一个目标顺序做，但需要换 Session 接着做 | `.agent/HANDOFF.md` |
+| **Governed GSD** | 复杂目标拆阶段、拆依赖、多人并行 | GSD `.planning/`；Handoff 只保存恢复指针 |
 
-1. **简单任务被重流程拖慢**：小改动也初始化完整 Harness，启动成本和上下文成本高于收益。
-2. **跨 Session 无法可靠续接**：聊天会压缩、截断或腐烂，新 Session 不知道可信状态和唯一下一步。
-3. **多 Agent 产生分裂状态**：多个 Worker 同时修改计划、Handoff 或完成状态，最终没有权威答案。
-4. **Skill 越装越多，上下文越用越差**：整套方法论被一次性加载，真正任务被路由和流程文本淹没。
-5. **“完成”只是文字声明**：测试、Review、代码树、Workflow 和实际 Claim 范围没有绑定，旧验证会被错误复用。
-
-Summer 的目标不是让所有工作变重，而是在用户明确需要时，提供最小但可靠的控制面。
-
-## 三条生命周期路径
-
-每个请求只有一个生命周期；Skill 只是能力叠加，不会创造第四条路径。
-
-| 路径 | 适用场景 | Workflow Authority | 状态成本 |
-|---|---|---|---|
-| **Direct** | 问答、研究、审查、小修复和常规开发 | 无 | 零 Summer 状态 |
-| **Handoff Lite** | 一个目标、顺序执行、需要跨 Session | `.agent/HANDOFF.md` | 一个 ≤4 KiB 当前工作集 |
-| **Governed GSD** | Phase、Wave、DAG、长期 Roadmap、多 Agent、多个活跃 Session | `.planning/` | GSD Workflow + Summer 治理 |
-
-关键路由规则：
-
-- 默认永远是 Direct；复杂度只能建议，不能替用户启用 Summer。
-- `Direct + Skill` 仍然是 Direct。
-- Handoff Lite 只支持顺序 Writer，不支持 Phase graph 或并发工作流。
-- 多 Agent、多个活跃 Session、Phase、Wave 或 DAG 是 GSD 硬触发。
-- Lite 只能显式、单向晋升 GSD；Lite 与 GSD 不能同时可写，GSD 不能静默降级。
-- 高风险不等于重型 Workflow：顺序完成的高风险小任务可以使用 Lite，但需要更严格的 Evidence、Review 和 Gate。
+多 Agent、多个活跃 Session、Phase、Wave 或 DAG 必须进入 GSD。Lite 只能显式晋升 GSD，不能让两边同时可写。
 
 ## 五层架构
 
