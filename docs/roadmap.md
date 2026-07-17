@@ -168,6 +168,8 @@ go vet ./...
 
 **Goal boundary**：可重复安装、打包和桌面分发；不以未签名开发包冒充正式产物。
 
+**当前过渡能力**：`scripts/deploy_codex_preview.py` 只为作者电脑安装/审计全局 AGENTS 与两个 Codex Skill 软链接，并检查既有 CLI/Skill 表面。它不安装依赖、不生成 Release、不替代 `summer setup codex|claude`，不构成 M7 完成。
+
 **Dependencies**：M2–M6 Release Gate。
 
 **Deliverables**

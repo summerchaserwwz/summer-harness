@@ -368,6 +368,23 @@ Current `--validation` is checkpoint text, not machine Evidence, and current `do
 - a separately installed compatible GSD Skill set for heavy workflows;
 - Python 3 only if you use the transitional Project Handoff helper.
 
+### Codex preview deployment for the maintainer workstation
+
+The repository includes a **maintainer-only, repeatable, fail-closed** deployment script. It manages only three symlinks—the global `AGENTS.md`, `summer-harness`, and `project-handoff`—and refuses to replace real files or links to another target. It then audits the CLI, GSD/Matt/gstack surface, explicit activation, Handoff smoke behavior, and legacy Harness conflicts.
+
+```bash
+python3 scripts/deploy_codex_preview.py --install
+```
+
+Read-only recheck:
+
+```bash
+python3 scripts/deploy_codex_preview.py
+python3 scripts/system_doctor.py
+```
+
+This is not the future production `summer setup codex` command. It is for the author's workstation and the current repository preview. It does not install Go, GSD, Matt Skills, or gstack; missing dependencies fail explicitly.
+
 ### Install the development preview with Go
 
 There is no Git tag or formal GitHub Release yet. `@latest` installs the latest available repository revision, not a stable release.
@@ -399,7 +416,7 @@ go build -o ./bin/summer ./cmd/summer
 ./bin/summer --version
 ```
 
-### Optional: install the Codex Skills
+### Manual Codex Skill installation
 
 Run from the repository root:
 

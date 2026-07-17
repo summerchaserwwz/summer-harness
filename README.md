@@ -441,6 +441,23 @@ summer save \
 - 重型工作流另需安装兼容的 GSD Skills。
 - 只有使用过渡期 Project Handoff helper 时才需要 Python 3。
 
+### 作者电脑的 Codex 预览部署
+
+仓库提供一个 **maintainer-only、可重复、fail-closed** 的本机部署脚本。它只管理三个软链接：全局 `AGENTS.md`、`summer-harness` 和 `project-handoff`；遇到同名真实文件或不同目标的链接会拒绝覆盖。随后检查 CLI、GSD/Matt/gstack 表面、显式启用规则、Handoff smoke 和旧 Harness 冲突。
+
+```bash
+python3 scripts/deploy_codex_preview.py --install
+```
+
+只读复检：
+
+```bash
+python3 scripts/deploy_codex_preview.py
+python3 scripts/system_doctor.py
+```
+
+这不是尚未交付的正式 `summer setup codex`。它用于作者电脑和当前仓库开发预览，不安装 Go、GSD、Matt Skills 或 gstack；这些依赖缺失时会明确失败。
+
 ### 使用 Go 安装开发预览
 
 仓库当前没有 Git tag 或正式 GitHub Release；`@latest` 会跟随仓库最新可用 revision，不等于稳定发行版。
@@ -472,7 +489,7 @@ go build -o ./bin/summer ./cmd/summer
 ./bin/summer --version
 ```
 
-### 可选：安装 Codex Skills
+### 手工安装 Codex Skills
 
 在仓库根目录执行：
 
